@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const app = require('./app');
 const { connectDB, disconnectDB } = require('./config/db');
+const { startWorkerLoop, stopWorkerLoop } = require('./workers');
 
 const server = http.createServer(app);
 
@@ -32,6 +33,9 @@ async function startServer() {
 
     server.listen(PORT, () => {
       console.log(`[VidStream Server] Listening on http://localhost:${PORT}`);
+      if (process.env.WORKER_MODE === 'inline' || !process.env.WORKER_MODE) {
+        startWorkerLoop(io);
+      }
     });
   } catch (err) {
     console.error('[VidStream Server] Startup error:', err.message);
@@ -42,6 +46,7 @@ async function startServer() {
 // Graceful shutdown handling
 async function gracefulShutdown(signal) {
   console.log(`\n[VidStream Server] Received ${signal}. Starting graceful shutdown...`);
+  stopWorkerLoop();
   server.close(async () => {
     console.log('[VidStream Server] HTTP server closed');
     try {

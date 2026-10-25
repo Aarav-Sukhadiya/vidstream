@@ -1,18 +1,20 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { probeVideo, transcodeToHLS } = require('../src/workers/transcoder');
 
 const execFileAsync = promisify(execFile);
-const testClipPath = path.join(__dirname, 'fixtures', 'sample_clip.mp4');
-const outDir = path.join(__dirname, 'fixtures', 'out');
+const testDir = path.join(os.tmpdir(), `transcoder_test_${Date.now()}`);
+const testClipPath = path.join(testDir, 'sample_clip.mp4');
+const outDir = path.join(testDir, 'out');
 
 describe('FFmpeg HLS Transcoder Suite (Checkpoint 9)', () => {
   beforeAll(async () => {
-    // Generate a valid 4-second 720p MP4 test video with audio using ffmpeg lavfi
-    await fs.promises.mkdir(path.dirname(testClipPath), { recursive: true });
+    await fs.promises.mkdir(testDir, { recursive: true });
 
+    // Generate a valid 4-second 720p MP4 test video with audio using ffmpeg lavfi
     const genArgs = [
       '-y',
       '-f', 'lavfi',
@@ -28,9 +30,8 @@ describe('FFmpeg HLS Transcoder Suite (Checkpoint 9)', () => {
   }, 20000);
 
   afterAll(async () => {
-    // Clean up generated test files
     try {
-      await fs.promises.rm(path.join(__dirname, 'fixtures'), { recursive: true, force: true });
+      await fs.promises.rm(testDir, { recursive: true, force: true });
     } catch {
       // ignore
     }
@@ -47,7 +48,7 @@ describe('FFmpeg HLS Transcoder Suite (Checkpoint 9)', () => {
   });
 
   it('probeVideo rejects corrupt or non-media files', async () => {
-    const fakeFile = path.join(__dirname, 'fixtures', 'fake_video.mp4');
+    const fakeFile = path.join(testDir, 'fake_video.mp4');
     await fs.promises.writeFile(fakeFile, 'This is plain text, not a video');
 
     await expect(probeVideo(fakeFile)).rejects.toThrow(/unreadable container|corrupt media/i);
