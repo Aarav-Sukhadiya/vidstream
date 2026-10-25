@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
+const path = require('path');
 const healthRoutes = require('./routes/health');
 const authRoutes = require('./routes/auth');
 const meRoutes = require('./routes/me');
@@ -29,6 +30,9 @@ app.use(
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Static media delivery for transcoded HLS streams and thumbnails
+app.use('/media', express.static(path.join(__dirname, '../temp')));
 
 // Health check endpoints (both /health and /api/health)
 app.use('/', healthRoutes);
