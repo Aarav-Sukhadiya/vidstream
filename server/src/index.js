@@ -1,8 +1,9 @@
-const express = require('express');
+require('dotenv').config();
 const http = require('http');
 const { Server } = require('socket.io');
+const app = require('./app');
+const { connectDB, disconnectDB } = require('./config/db');
 
-const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
@@ -12,17 +13,57 @@ const io = new Server(server, {
   },
 });
 
-app.use(express.json());
+// Socket.IO connection handler
+io.on('connection', (socket) => {
+  console.log(`[Socket.IO] Client connected: ${socket.id}`);
 
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  socket.on('disconnect', () => {
+    console.log(`[Socket.IO] Client disconnected: ${socket.id}`);
+  });
 });
 
-module.exports = { app, server, io };
+const PORT = process.env.PORT || 4000;
+
+async function startServer() {
+  try {
+    await connectDB();
+
+    server.listen(PORT, () => {
+      console.log(`[VidStream Server] Listening on http://localhost:${PORT}`);
+    });
+  } catch (err) {
+    console.error('[VidStream Server] Startup error:', err.message);
+    process.exit(1);
+  }
+}
+
+// Graceful shutdown handling
+async function gracefulShutdown(signal) {
+  console.log(`\n[VidStream Server] Received ${signal}. Starting graceful shutdown...`);
+  server.close(async () => {
+    console.log('[VidStream Server] HTTP server closed');
+    try {
+      await disconnectDB();
+      console.log('[VidStream Server] Shutdown complete');
+      process.exit(0);
+    } catch (err) {
+      console.error('[VidStream Server] Error during shutdown:', err);
+      process.exit(1);
+    }
+  });
+
+  // Force close if graceful shutdown takes too long
+  setTimeout(() => {
+    console.error('[VidStream Server] Could not close connections in time, forcefully shutting down');
+    process.exit(1);
+  }, 10000);
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 if (require.main === module) {
-  const PORT = process.env.PORT || 4000;
-  server.listen(PORT, () => {
-    console.log(`VidStream server listening on port ${PORT}`);
-  });
+  startServer();
 }
+
+module.exports = { app, server, io };
