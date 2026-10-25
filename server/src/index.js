@@ -13,6 +13,8 @@ const io = new Server(server, {
   },
 });
 
+app.set('io', io);
+
 // Socket.IO connection handler
 io.on('connection', (socket) => {
   console.log(`[Socket.IO] Client connected: ${socket.id}`);
