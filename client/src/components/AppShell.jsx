@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import { useAuth } from '../hooks/useAuth';
-import { Play, Search, Video, User as UserIcon, LogOut, Menu, X } from 'lucide-react';
+import { Play, Search, Video, User as UserIcon, LogOut, Menu, X, Users } from 'lucide-react';
 
 export default function AppShell({ children }) {
   const { user, logout } = useAuth();
@@ -56,6 +56,14 @@ export default function AppShell({ children }) {
             {user ? (
               <>
                 <Link
+                  to="/subscriptions"
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium text-slate-200 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-full transition"
+                >
+                  <Users className="w-4 h-4 text-slate-400" />
+                  <span>Subscriptions</span>
+                </Link>
+
+                <Link
                   to="/studio"
                   className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium text-slate-200 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-full transition"
                 >
@@ -71,7 +79,11 @@ export default function AppShell({ children }) {
                 </Link>
 
                 <div className="relative flex items-center gap-3">
-                  <div className="flex items-center gap-2">
+                  <Link
+                    to={`/c/${user.handle}`}
+                    className="flex items-center gap-2 hover:opacity-85 transition"
+                    title="View Channel"
+                  >
                     <div className="w-8 h-8 rounded-full bg-red-600/20 text-red-400 border border-red-500/30 flex items-center justify-center font-semibold text-sm">
                       {user.displayName?.[0]?.toUpperCase() || 'U'}
                     </div>
@@ -79,7 +91,7 @@ export default function AppShell({ children }) {
                       <div className="font-medium text-slate-200">{user.displayName}</div>
                       <div className="text-slate-400">@{user.handle}</div>
                     </div>
-                  </div>
+                  </Link>
 
                   <button
                     onClick={handleLogout}
@@ -134,6 +146,20 @@ export default function AppShell({ children }) {
             </form>
             {user && (
               <div className="pt-2 flex flex-col gap-2">
+                <Link
+                  to="/subscriptions"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 rounded"
+                >
+                  <Users className="w-4 h-4 text-slate-400" /> Subscriptions
+                </Link>
+                <Link
+                  to="/studio"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 rounded"
+                >
+                  <span>Studio</span>
+                </Link>
                 <Link
                   to="/upload"
                   onClick={() => setIsMenuOpen(false)}

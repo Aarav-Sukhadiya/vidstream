@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import Hls from 'hls.js';
 import api from '../api/client';
 import { useAuth } from '../hooks/useAuth';
@@ -40,10 +40,16 @@ function timeAgo(dateStr) {
 export default function Watch() {
   const { id } = useParams();
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const [video, setVideo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Subscription state
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [subscriberCount, setSubscriberCount] = useState(0);
+  const [subscribing, setSubscribing] = useState(false);
 
   // Player state
   const videoRef = useRef(null);
@@ -89,6 +95,8 @@ export default function Watch() {
         if (!isMounted) return;
         setVideo(res.data.video);
         setUserReaction(res.data.video.viewer?.reaction || 0);
+        setIsSubscribed(res.data.video.viewer?.subscribed || false);
+        setSubscriberCount(res.data.video.channel?.subscriberCount || 0);
       })
       .catch((err) => {
         if (!isMounted) return;
@@ -305,6 +313,38 @@ export default function Watch() {
         dislikeCount: previousDislikeCount,
       }));
       alert(err.response?.data?.error?.message || 'Failed to update reaction');
+    }
+  };
+
+  // 6b. Optimistic Subscribe & Unsubscribe
+  const handleSubscribeToggle = async () => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    if (!video || !video.channel?.id) return;
+
+    const prevSub = isSubscribed;
+    const prevCount = subscriberCount;
+    setIsSubscribed(!prevSub);
+    setSubscriberCount(prevSub ? Math.max(0, prevCount - 1) : prevCount + 1);
+
+    try {
+      setSubscribing(true);
+      if (prevSub) {
+        const res = await api.delete(`/channels/${video.channel.id}/subscription`);
+        setSubscriberCount(res.data.subscriberCount);
+        setIsSubscribed(false);
+      } else {
+        const res = await api.put(`/channels/${video.channel.id}/subscription`);
+        setSubscriberCount(res.data.subscriberCount);
+        setIsSubscribed(true);
+      }
+    } catch {
+      setIsSubscribed(prevSub);
+      setSubscriberCount(prevCount);
+    } finally {
+      setSubscribing(false);
     }
   };
 
@@ -534,19 +574,54 @@ export default function Watch() {
             </h1>
 
             <div className="flex flex-wrap items-center justify-between gap-4 mt-3 pb-4 border-b border-slate-800">
-              {/* Channel Info */}
+              {/* Channel Info & Subscribe Button */}
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-red-600/20 text-red-400 border border-red-500/30 flex items-center justify-center font-bold text-sm">
-                  {video.channel?.displayName?.[0]?.toUpperCase() || 'C'}
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-white">
-                    {video.channel?.displayName || 'Creator'}
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    {video.channel?.subscriberCount || 0} subscribers
-                  </p>
-                </div>
+                <Link
+                  to={`/c/${video.channel?.handle}`}
+                  className="flex items-center gap-3 group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-red-600/20 text-red-400 border border-red-500/30 flex items-center justify-center font-bold text-sm flex-shrink-0 group-hover:border-red-400 transition">
+                    {video.channel?.avatarUrl ? (
+                      <img
+                        src={video.channel.avatarUrl}
+                        alt={video.channel.displayName}
+                        className="w-full h-full rounded-full object-cover"
+                      />
+                    ) : (
+                      video.channel?.displayName?.[0]?.toUpperCase() || 'C'
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-white group-hover:text-red-400 transition">
+                      {video.channel?.displayName || 'Creator'}
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      {subscriberCount.toLocaleString()} {subscriberCount === 1 ? 'subscriber' : 'subscribers'}
+                    </p>
+                  </div>
+                </Link>
+
+                {/* Subscribe Button */}
+                {(!user || user.id !== video.channel?.id) && (
+                  <button
+                    onClick={handleSubscribeToggle}
+                    disabled={subscribing}
+                    className={`ml-2 px-4 py-1.5 rounded-full text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shadow-sm ${
+                      isSubscribed
+                        ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                        : 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/20'
+                    }`}
+                  >
+                    {isSubscribed ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Subscribed</span>
+                      </>
+                    ) : (
+                      <span>Subscribe</span>
+                    )}
+                  </button>
+                )}
               </div>
 
               {/* Action Buttons (Like, Dislike, Share) */}

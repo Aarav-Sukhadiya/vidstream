@@ -11,6 +11,8 @@ const meRoutes = require('./routes/me');
 const videoRoutes = require('./routes/video');
 const webhookRoutes = require('./routes/webhook');
 const commentRoutes = require('./routes/comment');
+const channelRoutes = require('./routes/channel');
+const feedRoutes = require('./routes/feed');
 const { errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
@@ -66,6 +68,14 @@ app.use('/comments', commentRoutes);
 app.use('/webhooks', webhookRoutes);
 app.use('/api/webhooks', webhookRoutes);
 
+// Channel routes (subscription, channel profile)
+app.use('/api/channels', channelRoutes);
+app.use('/channels', channelRoutes);
+
+// Feed routes (subscriptions feed)
+app.use('/api/feed', feedRoutes);
+app.use('/feed', feedRoutes);
+
 // SPA client fallback for non-API, non-media routes in production
 if (fs.existsSync(publicPath)) {
   app.get('*', (req, res, next) => {
@@ -73,6 +83,8 @@ if (fs.existsSync(publicPath)) {
       req.path.startsWith('/api') ||
       req.path.startsWith('/media') ||
       req.path.startsWith('/webhooks') ||
+      req.path.startsWith('/channels') ||
+      req.path.startsWith('/feed') ||
       req.path === '/health'
     ) {
       return next();
