@@ -19,6 +19,9 @@ const { errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
 
+// Trust reverse proxy (e.g. Render, Vercel, AWS ALB) for accurate protocol and client IP
+app.set('trust proxy', 1);
+
 // Security and utility middlewares
 app.use(
   helmet({
@@ -68,6 +71,10 @@ app.use(
   })
 );
 
+// Health check endpoints (both /health and /api/health) - placed before rate limiters
+app.use('/', healthRoutes);
+app.use('/api', healthRoutes);
+
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -82,10 +89,6 @@ const publicPath = path.join(__dirname, '../public');
 if (fs.existsSync(publicPath)) {
   app.use(express.static(publicPath));
 }
-
-// Health check endpoints (both /health and /api/health)
-app.use('/', healthRoutes);
-app.use('/api', healthRoutes);
 
 // Authentication routes
 app.use('/api/auth', authRoutes);

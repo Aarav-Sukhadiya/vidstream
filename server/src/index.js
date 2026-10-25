@@ -31,8 +31,8 @@ async function startServer() {
   try {
     await connectDB();
 
-    server.listen(PORT, () => {
-      console.log(`[VidStream Server] Listening on http://localhost:${PORT}`);
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`[VidStream Server] Listening on http://0.0.0.0:${PORT}`);
       if (process.env.WORKER_MODE === 'inline' || !process.env.WORKER_MODE) {
         startWorkerLoop(io);
       }
