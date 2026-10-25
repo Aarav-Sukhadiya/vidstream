@@ -22,6 +22,14 @@ const app = express();
 // Trust reverse proxy (e.g. Render, Vercel, AWS ALB) for accurate protocol and client IP
 app.set('trust proxy', 1);
 
+// Log incoming requests in non-test mode for instant observability
+if (process.env.NODE_ENV !== 'test') {
+  app.use((req, res, next) => {
+    console.log(`[HTTP ${req.method}] ${req.url}`);
+    next();
+  });
+}
+
 // Security and utility middlewares
 app.use(
   helmet({

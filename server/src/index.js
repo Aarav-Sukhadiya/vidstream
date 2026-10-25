@@ -28,15 +28,16 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 10000;
 
 async function startServer() {
+  // Start HTTP server immediately so Render health checks pass without waiting on external handshakes
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`[VidStream Server] Listening on http://0.0.0.0:${PORT}`);
+  });
+
   try {
     await connectDB();
-
-    server.listen(PORT, '0.0.0.0', () => {
-      console.log(`[VidStream Server] Listening on http://0.0.0.0:${PORT}`);
-      if (process.env.WORKER_MODE === 'inline' || !process.env.WORKER_MODE) {
-        startWorkerLoop(io);
-      }
-    });
+    if (process.env.WORKER_MODE === 'inline' || !process.env.WORKER_MODE) {
+      startWorkerLoop(io);
+    }
   } catch (err) {
     console.error('[VidStream Server] Startup error:', err.message);
     process.exit(1);
