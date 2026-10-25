@@ -39,7 +39,8 @@ export default function Upload() {
 
   // Socket.IO for real-time status updates
   useEffect(() => {
-    const socket = io('/', {
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || '/';
+    const socket = io(socketUrl, {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
     });

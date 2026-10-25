@@ -65,7 +65,8 @@ export default function Studio() {
 
   // Real-time Socket.IO status updates
   useEffect(() => {
-    const socket = io('/', { path: '/socket.io', transports: ['websocket', 'polling'] });
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || '/';
+    const socket = io(socketUrl, { path: '/socket.io', transports: ['websocket', 'polling'] });
 
     socket.on('video:status', (data) => {
       setVideos((prev) =>
