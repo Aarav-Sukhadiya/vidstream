@@ -17,7 +17,7 @@ RUN apt-get update && \
 
 # Set production environment variables
 ENV NODE_ENV=production \
-    PORT=4000 \
+    PORT=10000 \
     WORKER_MODE=inline
 
 # Copy server package manifests and install production dependencies only
@@ -35,6 +35,6 @@ RUN mkdir -p /app/server/temp
 
 WORKDIR /app/server
 
-EXPOSE 4000
+EXPOSE 10000
 
 CMD ["node", "src/index.js"]

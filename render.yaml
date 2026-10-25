@@ -10,7 +10,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 4000
+        value: 10000
       - key: WORKER_MODE
         value: inline
       - key: CLIENT_ORIGIN
