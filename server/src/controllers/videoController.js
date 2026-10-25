@@ -1,7 +1,10 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const Video = require('../models/Video');
 const Job = require('../models/Job');
+const ViewEvent = require('../models/ViewEvent');
+const WatchProgress = require('../models/WatchProgress');
 const { generateSignedUploadParams } = require('../services/storage');
 const { enqueueTranscodeJob } = require('../workers/queue');
 const { TEMP_BASE } = require('../workers');
@@ -258,10 +261,158 @@ async function deleteVideo(req, res, next) {
   }
 }
 
+/**
+ * Get video by ID with visibility rules and viewer context
+ */
+async function getVideoById(req, res, next) {
+  try {
+    const { id } = req.params;
+    const video = await Video.findById(id).populate('owner', 'handle displayName avatarUrl subscriberCount');
+
+    if (!video) {
+      throw new AppError('Video not found', 404, 'NOT_FOUND');
+    }
+
+    const currentUserId = req.user?._id?.toString();
+    const isOwner = currentUserId && currentUserId === video.owner._id.toString();
+
+    // Visibility enforcement:
+    // 1. Private videos return 404 to everyone except the owner
+    if (video.visibility === 'private' && !isOwner) {
+      throw new AppError('Video not found', 404, 'NOT_FOUND');
+    }
+
+    // 2. Videos that are not ready are visible only to the owner; everyone else gets 404
+    if (video.status !== 'ready' && !isOwner) {
+      throw new AppError('Video not found', 404, 'NOT_FOUND');
+    }
+
+    const videoObj = {
+      id: video._id.toString(),
+      title: video.title,
+      description: video.description,
+      tags: video.tags,
+      visibility: video.visibility,
+      status: video.status,
+      failureReason: video.failureReason,
+      hlsUrl: video.hlsUrl,
+      thumbnailUrl: video.thumbnailUrl,
+      durationSec: video.durationSec,
+      viewCount: video.viewCount,
+      likeCount: video.likeCount,
+      dislikeCount: video.dislikeCount,
+      commentCount: video.commentCount,
+      publishedAt: video.publishedAt,
+      createdAt: video.createdAt,
+      channel: {
+        id: video.owner._id.toString(),
+        handle: video.owner.handle,
+        displayName: video.owner.displayName,
+        avatarUrl: video.owner.avatarUrl,
+        subscriberCount: video.owner.subscriberCount || 0,
+      },
+    };
+
+    // Attach viewer progress if authenticated
+    if (req.user) {
+      const progress = await WatchProgress.findOne({
+        user: req.user._id,
+        video: video._id,
+      });
+
+      videoObj.viewer = {
+        progressSec: progress ? progress.positionSec : 0,
+        isOwner,
+      };
+    }
+
+    res.status(200).json({ video: videoObj });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Deduplicated view recording
+ */
+async function recordView(req, res, next) {
+  try {
+    const { id } = req.params;
+    const video = await Video.findById(id);
+
+    if (!video) {
+      throw new AppError('Video not found', 404, 'NOT_FOUND');
+    }
+
+    let viewerKey;
+    if (req.user) {
+      viewerKey = req.user._id.toString();
+    } else {
+      const ip = req.ip || req.connection?.remoteAddress || '127.0.0.1';
+      const userAgent = req.headers['user-agent'] || '';
+      const salt = process.env.VIEW_SALT || 'vidstream_view_salt_2026';
+      viewerKey = crypto.createHash('sha256').update(`${ip}-${userAgent}-${salt}`).digest('hex');
+    }
+
+    let counted = false;
+    try {
+      await ViewEvent.create({
+        video: video._id,
+        viewerKey,
+      });
+      // Increment view counter atomically
+      await Video.updateOne({ _id: video._id }, { $inc: { viewCount: 1 } });
+      counted = true;
+    } catch (err) {
+      if (err.code !== 11000) {
+        throw err;
+      }
+      // Duplicate view key: view already counted in last 24h
+    }
+
+    res.status(200).json({ success: true, counted });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Save playback position
+ */
+async function saveProgress(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { positionSec, durationSec } = req.body;
+
+    if (positionSec === undefined || isNaN(positionSec)) {
+      throw new AppError('Valid positionSec is required', 400, 'VALIDATION');
+    }
+
+    await WatchProgress.findOneAndUpdate(
+      { user: req.user._id, video: id },
+      {
+        $set: {
+          positionSec: Math.max(0, Math.round(positionSec)),
+          durationSec: durationSec ? Math.round(durationSec) : 0,
+          updatedAt: new Date(),
+        },
+      },
+      { upsert: true, new: true }
+    );
+
+    res.status(200).json({ success: true, positionSec: Math.round(positionSec) });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   createVideo,
   confirmVideoUpload,
   getMyVideos,
+  getVideoById,
+  recordView,
+  saveProgress,
   retryVideo,
   updateVideo,
   deleteVideo,

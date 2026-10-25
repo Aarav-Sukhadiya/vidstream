@@ -2,18 +2,24 @@ const express = require('express');
 const {
   createVideo,
   confirmVideoUpload,
+  getVideoById,
+  recordView,
+  saveProgress,
   retryVideo,
   updateVideo,
   deleteVideo,
 } = require('../controllers/videoController');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { validateBody } = require('../middleware/validate');
 const { createVideoSchema } = require('../schemas/video');
 
 const router = express.Router();
 
 router.post('/', requireAuth, validateBody(createVideoSchema), createVideo);
+router.get('/:id', optionalAuth, getVideoById);
 router.post('/:id/confirm', requireAuth, confirmVideoUpload);
+router.post('/:id/view', optionalAuth, recordView);
+router.put('/:id/progress', requireAuth, saveProgress);
 router.post('/:id/retry', requireAuth, retryVideo);
 router.patch('/:id', requireAuth, updateVideo);
 router.delete('/:id', requireAuth, deleteVideo);
