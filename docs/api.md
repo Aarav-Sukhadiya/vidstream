@@ -348,7 +348,7 @@ List videos liked by the user (newest liked first).
 ### `GET /api/me/videos`
 Creator studio video management list with real-time transcoding status.
 - **Auth:** Bearer Token
-- **Response (200):** `{ "videos": [...] }`
+- **Response (200):** `{ "items": [...] }`
 
 ---
 
