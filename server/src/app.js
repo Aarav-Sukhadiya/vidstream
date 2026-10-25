@@ -4,6 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const path = require('path');
+const fs = require('fs');
 const healthRoutes = require('./routes/health');
 const authRoutes = require('./routes/auth');
 const meRoutes = require('./routes/me');
@@ -34,6 +35,12 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Static media delivery for transcoded HLS streams and thumbnails
 app.use('/media', express.static(path.join(__dirname, '../temp')));
 
+// Serve built production frontend assets if present
+const publicPath = path.join(__dirname, '../public');
+if (fs.existsSync(publicPath)) {
+  app.use(express.static(publicPath));
+}
+
 // Health check endpoints (both /health and /api/health)
 app.use('/', healthRoutes);
 app.use('/api', healthRoutes);
@@ -53,6 +60,21 @@ app.use('/videos', videoRoutes);
 // Webhook routes (Cloudinary notifications)
 app.use('/webhooks', webhookRoutes);
 app.use('/api/webhooks', webhookRoutes);
+
+// SPA client fallback for non-API, non-media routes in production
+if (fs.existsSync(publicPath)) {
+  app.get('*', (req, res, next) => {
+    if (
+      req.path.startsWith('/api') ||
+      req.path.startsWith('/media') ||
+      req.path.startsWith('/webhooks') ||
+      req.path === '/health'
+    ) {
+      return next();
+    }
+    res.sendFile(path.join(publicPath, 'index.html'));
+  });
+}
 
 // Catch-all 404 for unknown routes
 app.use((req, res) => {

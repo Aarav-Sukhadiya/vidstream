@@ -1,25 +1,40 @@
-# VidStream Production Dockerfile (Express API + ffmpeg worker)
+# Stage 1: Build Frontend Assets
+FROM node:20-slim AS client-builder
+WORKDIR /app/client
+COPY client/package*.json ./
+RUN npm ci
+COPY client/ ./
+RUN npm run build
+
+# Stage 2: Production Server & Worker Image
 FROM node:20-slim
-
-# Install system dependencies including ffmpeg and ffprobe
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg curl && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
-# Copy server package definitions and install production dependencies
+# Install system dependencies: ffmpeg, ffprobe, ca-certificates
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ffmpeg ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set production environment variables
+ENV NODE_ENV=production \
+    PORT=4000 \
+    WORKER_MODE=inline
+
+# Copy server package manifests and install production dependencies only
 COPY server/package*.json ./server/
-RUN npm --prefix server ci --omit=dev
+RUN cd server && npm ci --omit=dev
 
 # Copy server source code
-COPY server ./server
+COPY server/ ./server/
 
-ENV NODE_ENV=production
-ENV PORT=4000
-ENV WORKER_MODE=inline
+# Copy built client assets into server/public for unified deployment
+COPY --from=client-builder /app/client/dist ./server/public
+
+# Ensure temp directory exists for video processing
+RUN mkdir -p /app/server/temp
+
+WORKDIR /app/server
 
 EXPOSE 4000
 
-CMD ["npm", "--prefix", "server", "start"]
+CMD ["node", "src/index.js"]
