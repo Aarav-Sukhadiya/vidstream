@@ -56,6 +56,13 @@ export default function AppShell({ children }) {
             {user ? (
               <>
                 <Link
+                  to="/studio"
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium text-slate-200 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-full transition"
+                >
+                  <span>Studio</span>
+                </Link>
+
+                <Link
                   to="/upload"
                   className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-full transition"
                 >
