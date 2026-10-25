@@ -287,6 +287,174 @@ async function seed() {
         likeCount: 710,
         publishedAt: new Date(now - 6 * 3600000),
       },
+      {
+        owner: maya._id,
+        title: 'Rust for JavaScript Developers: Memory Safety Without GC',
+        description: 'An intuitive bridge from JavaScript to Rust: borrowing, ownership rules, lifetimes, and why Rust produces blazing-fast WebAssembly.',
+        tags: ['rust', 'system design', 'coding'],
+        visibility: 'public',
+        status: 'ready',
+        hlsUrl: demoHlsStream,
+        thumbnailUrl: 'https://images.unsplash.com/photo-1555066931-bf19f8fd1085?auto=format&fit=crop&w=640&q=80',
+        durationSec: 740,
+        viewCount: 8420,
+        likeCount: 910,
+        publishedAt: new Date(now - 5 * 3600000),
+      },
+      {
+        owner: sam._id,
+        title: 'Designing an Event-Driven Architecture with Apache Kafka',
+        description: 'Partitioning strategies, consumer groups, exactly-once semantics, and handling schema evolution in production message streams.',
+        tags: ['system design', 'devops', 'node'],
+        visibility: 'public',
+        status: 'ready',
+        hlsUrl: demoHlsStream,
+        thumbnailUrl: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=640&q=80',
+        durationSec: 1120,
+        viewCount: 4190,
+        likeCount: 430,
+        publishedAt: new Date(now - 4 * 3600000),
+      },
+      {
+        owner: alex._id,
+        title: 'Next.js 15 App Router: Server Components & Streaming SSR',
+        description: 'Complete guide to React Server Components (RSC), Suspense boundaries, parallel routes, and instant streaming responses.',
+        tags: ['react', 'frontend', 'javascript'],
+        visibility: 'public',
+        status: 'ready',
+        hlsUrl: demoHlsStream,
+        thumbnailUrl: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=640&q=80',
+        durationSec: 890,
+        viewCount: 9530,
+        likeCount: 1140,
+        publishedAt: new Date(now - 3 * 3600000),
+      },
+      {
+        owner: maya._id,
+        title: 'Building a Vector Search Engine from Scratch in Python',
+        description: 'Learn how cosine similarity, HNSW (Hierarchical Navigable Small World) graphs, and vector embeddings power modern AI retrieval systems.',
+        tags: ['algorithms', 'ai', 'coding'],
+        visibility: 'public',
+        status: 'ready',
+        hlsUrl: demoHlsStream,
+        thumbnailUrl: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&w=640&q=80',
+        durationSec: 1050,
+        viewCount: 11200,
+        likeCount: 1350,
+        publishedAt: new Date(now - 2 * 3600000),
+      },
+      {
+        owner: alex._id,
+        title: 'GraphQL vs REST: Schema Federation at Scale',
+        description: 'Architectural breakdown of Apollo Federation, n+1 dataloader batching, schema stitching, and caching strategies.',
+        tags: ['node', 'system design', 'frontend'],
+        visibility: 'public',
+        status: 'ready',
+        hlsUrl: demoHlsStream,
+        thumbnailUrl: 'https://images.unsplash.com/photo-1522542550221-31fd19575a2d?auto=format&fit=crop&w=640&q=80',
+        durationSec: 630,
+        viewCount: 3480,
+        likeCount: 360,
+        publishedAt: new Date(now - 1 * 3600000),
+      },
+      {
+        owner: sam._id,
+        title: 'Zero Trust Cloud Security: IAM, mTLS, and Network Policies',
+        description: 'Hardening multi-tenant Kubernetes clusters with Cilium network policies, SPIFFE/SPIRE workload identities, and automated mTLS.',
+        tags: ['devops', 'system design', 'cloud'],
+        visibility: 'public',
+        status: 'ready',
+        hlsUrl: demoHlsStream,
+        thumbnailUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=640&q=80',
+        durationSec: 810,
+        viewCount: 2980,
+        likeCount: 310,
+        publishedAt: new Date(now - 50 * 60000),
+      },
+      {
+        owner: maya._id,
+        title: 'Trie Data Structure & Autocomplete System Design',
+        description: 'How Google and Amazon build real-time autocomplete suggestions: Trie implementations, ranking heuristics, and distributed caching.',
+        tags: ['dsa', 'algorithms', 'system design'],
+        visibility: 'public',
+        status: 'ready',
+        hlsUrl: demoHlsStream,
+        thumbnailUrl: 'https://images.unsplash.com/photo-1504639725590-34d0984388bd?auto=format&fit=crop&w=640&q=80',
+        durationSec: 570,
+        viewCount: 6740,
+        likeCount: 720,
+        publishedAt: new Date(now - 40 * 60000),
+      },
+      {
+        owner: alex._id,
+        title: 'CSS Container Queries & Modern Responsive Layouts',
+        description: 'Stop using media queries! Learn how container queries, @container, :has(), and subgrid unlock truly modular component design.',
+        tags: ['frontend', 'css', 'react'],
+        visibility: 'public',
+        status: 'ready',
+        hlsUrl: demoHlsStream,
+        thumbnailUrl: 'https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?auto=format&fit=crop&w=640&q=80',
+        durationSec: 420,
+        viewCount: 5120,
+        likeCount: 590,
+        publishedAt: new Date(now - 30 * 60000),
+      },
+      {
+        owner: sam._id,
+        title: 'MongoDB Sharding & Replica Sets Architecture',
+        description: 'High-availability replica set election mechanics, chunk migrations across shards, and choosing the optimal shard key.',
+        tags: ['databases', 'system design', 'devops'],
+        visibility: 'public',
+        status: 'ready',
+        hlsUrl: demoHlsStream,
+        thumbnailUrl: 'https://images.unsplash.com/photo-1544383835-bda2bc66a55d?auto=format&fit=crop&w=640&q=80',
+        durationSec: 980,
+        viewCount: 4310,
+        likeCount: 480,
+        publishedAt: new Date(now - 20 * 60000),
+      },
+      {
+        owner: alex._id,
+        title: 'How To Build a Real-Time Multiplayer Canvas in WebSockets',
+        description: 'Building collaborative real-time whiteboards using HTML5 Canvas, CRDT conflict resolution, and WebSocket operational transforms.',
+        tags: ['javascript', 'frontend', 'node'],
+        visibility: 'public',
+        status: 'ready',
+        hlsUrl: demoHlsStream,
+        thumbnailUrl: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=640&q=80',
+        durationSec: 750,
+        viewCount: 7890,
+        likeCount: 840,
+        publishedAt: new Date(now - 15 * 60000),
+      },
+      {
+        owner: maya._id,
+        title: 'Dynamic Programming: Knapsack & Coin Change Visualized',
+        description: 'Visual step-by-step 2D matrix state breakdown of 0/1 Knapsack, Unbounded Knapsack, and optimal Coin Change subproblems.',
+        tags: ['dsa', 'algorithms', 'coding'],
+        visibility: 'public',
+        status: 'ready',
+        hlsUrl: demoHlsStream,
+        thumbnailUrl: 'https://images.unsplash.com/photo-1509228468518-180dd4864904?auto=format&fit=crop&w=640&q=80',
+        durationSec: 860,
+        viewCount: 9120,
+        likeCount: 990,
+        publishedAt: new Date(now - 10 * 60000),
+      },
+      {
+        owner: sam._id,
+        title: 'CI/CD Pipeline with GitHub Actions and Docker BuildKit',
+        description: 'Master GitHub Actions workflows: matrix builds, remote Docker layer caching with BuildKit, automated semver tagging, and staging rollouts.',
+        tags: ['devops', 'node', 'cloud'],
+        visibility: 'public',
+        status: 'ready',
+        hlsUrl: demoHlsStream,
+        thumbnailUrl: 'https://images.unsplash.com/photo-1618401471353-b98afee0b2eb?auto=format&fit=crop&w=640&q=80',
+        durationSec: 690,
+        viewCount: 3670,
+        likeCount: 395,
+        publishedAt: new Date(now - 5 * 60000),
+      },
     ];
 
     const createdVideos = await Video.create(videosData);
@@ -331,15 +499,42 @@ async function seed() {
       body: 'The tip at 0:45 on container queries with Tailwind is gold. Using this in my new project.',
     });
 
+    // Sam comments on Maya's Rust video (createdVideos[16])
+    await Comment.create({
+      video: createdVideos[16]._id,
+      author: sam._id,
+      body: 'See 3:20 for the memory layout comparison between V8 heap and Rust stack allocations!',
+    });
+
+    // Maya comments on Alex's Next.js 15 video (createdVideos[18])
+    await Comment.create({
+      video: createdVideos[18]._id,
+      author: maya._id,
+      body: 'The diagram at 1:15 explaining streaming SSR with Suspense is brilliant.',
+    });
+
+    // Alex comments on Maya's Trie video (createdVideos[21])
+    await Comment.create({
+      video: createdVideos[21]._id,
+      author: alex._id,
+      body: 'At 2:40 the prefix lookup algorithm was explained so cleanly.',
+    });
+
     // Update video comment counts
     await Video.updateOne({ _id: createdVideos[0]._id }, { $set: { commentCount: 3 } });
     await Video.updateOne({ _id: createdVideos[15]._id }, { $set: { commentCount: 1 } });
+    await Video.updateOne({ _id: createdVideos[16]._id }, { $set: { commentCount: 1 } });
+    await Video.updateOne({ _id: createdVideos[18]._id }, { $set: { commentCount: 1 } });
+    await Video.updateOne({ _id: createdVideos[21]._id }, { $set: { commentCount: 1 } });
 
     console.log('[Seed] Seeding demo reactions and watch progress...');
     await Reaction.create([
       { user: alex._id, video: createdVideos[0]._id, value: 1 },
       { user: sam._id, video: createdVideos[0]._id, value: 1 },
       { user: maya._id, video: createdVideos[15]._id, value: 1 },
+      { user: alex._id, video: createdVideos[16]._id, value: 1 },
+      { user: sam._id, video: createdVideos[18]._id, value: 1 },
+      { user: maya._id, video: createdVideos[21]._id, value: 1 },
     ]);
 
     await WatchProgress.create([

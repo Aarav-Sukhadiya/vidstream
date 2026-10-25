@@ -12,7 +12,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 
-const TAG_FILTERS = ['All', 'React', 'Node', 'System Design', 'Algorithms', 'Databases', 'DevOps'];
+const TAG_FILTERS = ['All', 'React', 'Node', 'System Design', 'Algorithms', 'Databases', 'DevOps', 'Rust', 'AI', 'Cloud', 'Frontend'];
 
 export default function Home() {
   const [videos, setVideos] = useState([]);
