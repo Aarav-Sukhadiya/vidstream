@@ -34,6 +34,8 @@ export default function Upload() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [videoStatus, setVideoStatus] = useState(null); // 'awaiting_upload' | 'queued' | 'processing' | 'ready' | 'failed'
   const [createdVideoId, setCreatedVideoId] = useState(null);
+  const [failureReason, setFailureReason] = useState('');
+  const [videoMeta, setVideoMeta] = useState(null);
 
   // Socket.IO for real-time status updates
   useEffect(() => {
@@ -45,6 +47,16 @@ export default function Upload() {
     socket.on('video:status', (data) => {
       if (data.videoId === createdVideoId) {
         setVideoStatus(data.status);
+        if (data.failureReason) {
+          setFailureReason(data.failureReason);
+        }
+        if (data.thumbnailUrl || data.hlsUrl) {
+          setVideoMeta({
+            thumbnailUrl: data.thumbnailUrl,
+            hlsUrl: data.hlsUrl,
+            durationSec: data.durationSec,
+          });
+        }
       }
     });
 
@@ -223,28 +235,46 @@ export default function Upload() {
 
       {/* Upload Complete / In-Progress Pipeline View */}
       {videoStatus && (
-        <div className="mb-8 p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+        <div className={`mb-8 p-6 rounded-2xl bg-slate-900 border space-y-4 ${
+          videoStatus === 'failed'
+            ? 'border-red-500/40 bg-red-950/20'
+            : videoStatus === 'ready'
+            ? 'border-emerald-500/40 bg-emerald-950/20'
+            : 'border-slate-800'
+        }`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {uploadProgress < 100 ? (
-                <Loader2 className="w-6 h-6 text-red-500 animate-spin" />
+              {videoStatus === 'failed' ? (
+                <AlertCircle className="w-6 h-6 text-red-500 flex-shrink-0" />
+              ) : videoStatus === 'ready' ? (
+                <CheckCircle2 className="w-6 h-6 text-emerald-400 flex-shrink-0" />
               ) : (
-                <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                <Loader2 className="w-6 h-6 text-red-500 animate-spin flex-shrink-0" />
               )}
               <div>
                 <h3 className="font-semibold text-white">
-                  {uploadProgress < 100 ? 'Uploading to Storage...' : 'Upload Successful!'}
+                  {videoStatus === 'awaiting_upload' && 'Uploading to Storage...'}
+                  {videoStatus === 'queued' && 'Upload Complete — Queued for Transcoding'}
+                  {videoStatus === 'processing' && 'Transcoding Video (FFmpeg HLS 360p & 720p)...'}
+                  {videoStatus === 'ready' && 'Transcoding Complete — Video Ready!'}
+                  {videoStatus === 'failed' && 'Transcoding Failed'}
                 </h3>
-                <p className="text-xs text-slate-400">
-                  Status:{' '}
-                  <span className="font-mono uppercase font-bold text-slate-200">
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Pipeline Status:{' '}
+                  <span className={`font-mono uppercase font-bold px-1.5 py-0.5 rounded text-[11px] ${
+                    videoStatus === 'ready'
+                      ? 'bg-emerald-500/20 text-emerald-400'
+                      : videoStatus === 'failed'
+                      ? 'bg-red-500/20 text-red-400'
+                      : 'bg-slate-800 text-slate-200'
+                  }`}>
                     {videoStatus}
                   </span>
                 </p>
               </div>
             </div>
 
-            {uploadProgress === 100 && (
+            {(videoStatus === 'ready' || videoStatus === 'failed') && (
               <button
                 onClick={() => navigate('/')}
                 className="px-4 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg transition"
@@ -254,17 +284,46 @@ export default function Upload() {
             )}
           </div>
 
-          {/* Progress Bar */}
-          <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden">
-            <div
-              className="bg-red-600 h-full rounded-full transition-all duration-300"
-              style={{ width: `${uploadProgress}%` }}
-            />
-          </div>
-          <div className="flex justify-between text-xs text-slate-400 font-mono">
-            <span>Direct signed storage transfer</span>
-            <span>{uploadProgress}%</span>
-          </div>
+          {/* Failure reason explanation if transcode failed */}
+          {videoStatus === 'failed' && failureReason && (
+            <div className="p-3 bg-red-900/30 border border-red-500/30 rounded-xl text-xs text-red-300">
+              <span className="font-semibold text-red-200">Failure Reason: </span>
+              {failureReason}
+            </div>
+          )}
+
+          {/* Video metadata preview if ready */}
+          {videoStatus === 'ready' && videoMeta && (
+            <div className="p-3 bg-slate-800/60 border border-slate-700 rounded-xl text-xs text-slate-300 flex items-center gap-4">
+              {videoMeta.thumbnailUrl && (
+                <img
+                  src={videoMeta.thumbnailUrl}
+                  alt="Thumbnail"
+                  className="w-20 h-12 object-cover rounded border border-slate-700"
+                />
+              )}
+              <div>
+                <p className="font-semibold text-white">HLS Streams &amp; Thumbnail Ready</p>
+                <p className="text-slate-400">Duration: {videoMeta.durationSec || 0}s &bull; Renditions: 360p / 720p</p>
+              </div>
+            </div>
+          )}
+
+          {/* Progress Bar for Storage Upload */}
+          {videoStatus === 'awaiting_upload' && (
+            <>
+              <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden">
+                <div
+                  className="bg-red-600 h-full rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-xs text-slate-400 font-mono">
+                <span>Direct signed storage transfer</span>
+                <span>{uploadProgress}%</span>
+              </div>
+            </>
+          )}
         </div>
       )}
 
