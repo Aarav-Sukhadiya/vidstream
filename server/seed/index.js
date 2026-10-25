@@ -1,4 +1,5 @@
 require('dotenv').config();
+const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const { connectDB, disconnectDB } = require('../src/config/db');
 const User = require('../src/models/User');
@@ -28,7 +29,12 @@ async function seed() {
     console.log('[Seed] Creating demo users...');
     const defaultPasswordHash = await bcrypt.hash('Password123!', 12);
 
+    const mayaId = new mongoose.Types.ObjectId('65a000000000000000000001');
+    const alexId = new mongoose.Types.ObjectId('65a000000000000000000002');
+    const samId  = new mongoose.Types.ObjectId('65a000000000000000000003');
+
     const maya = await User.create({
+      _id: mayaId,
       email: 'maya@vidstream.com',
       passwordHash: defaultPasswordHash,
       handle: 'maya',
@@ -39,6 +45,7 @@ async function seed() {
     });
 
     const alex = await User.create({
+      _id: alexId,
       email: 'alex@vidstream.com',
       passwordHash: defaultPasswordHash,
       handle: 'alex_dev',
@@ -49,6 +56,7 @@ async function seed() {
     });
 
     const sam = await User.create({
+      _id: samId,
       email: 'sam@vidstream.com',
       passwordHash: defaultPasswordHash,
       handle: 'sam_systems',
@@ -456,6 +464,16 @@ async function seed() {
         publishedAt: new Date(now - 5 * 60000),
       },
     ];
+
+    const targetOldId = '6adde8c64744aff2b00565bc';
+    videosData.forEach((v, index) => {
+      if (index === 0) {
+        v._id = new mongoose.Types.ObjectId(targetOldId);
+      } else {
+        const hex = (index + 10).toString(16).padStart(2, '0');
+        v._id = new mongoose.Types.ObjectId(`65a0000000000000000000${hex}`);
+      }
+    });
 
     const createdVideos = await Video.create(videosData);
     console.log(`[Seed] Successfully seeded 3 demo users and ${createdVideos.length} ready videos!`);

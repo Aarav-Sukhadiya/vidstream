@@ -116,8 +116,9 @@ export default function Watch() {
     };
   }, [id]);
 
-  // 2. Fetch comments
+  // 2. Fetch comments (only when video exists)
   const fetchComments = useCallback(async () => {
+    if (!video) return;
     try {
       setCommentsLoading(true);
       const res = await api.get(`/videos/${id}/comments`);
@@ -127,14 +128,17 @@ export default function Watch() {
     } finally {
       setCommentsLoading(false);
     }
-  }, [id]);
+  }, [id, video]);
 
   useEffect(() => {
-    fetchComments();
-  }, [fetchComments]);
+    if (video) {
+      fetchComments();
+    }
+  }, [fetchComments, video]);
 
-  // 2b. Fetch related videos
+  // 2b. Fetch related videos (only when video exists)
   useEffect(() => {
+    if (!video) return;
     let isMounted = true;
     setRelatedLoading(true);
     api
@@ -154,7 +158,7 @@ export default function Watch() {
     return () => {
       isMounted = false;
     };
-  }, [id]);
+  }, [id, video]);
 
   // 3. Initialize HLS player
   useEffect(() => {
