@@ -414,26 +414,32 @@ async function saveProgress(req, res, next) {
 async function getVideos(req, res, next) {
   try {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 12, 1), 50);
-    const { cursor, tag, q, sort = 'newest' } = req.query;
+    const { cursor, tag, q, sort } = req.query;
 
     const query = {
       status: 'ready',
       visibility: 'public',
     };
 
-    if (tag) {
+    if (tag && tag.toLowerCase().trim() !== 'all') {
       query.tags = tag.toLowerCase().trim();
     }
 
+    const effectiveSort = sort || (q && q.trim() ? 'relevance' : 'newest');
+
+    let projection = {};
     if (q && q.trim()) {
       query.$text = { $search: q.trim() };
+      if (effectiveSort === 'relevance') {
+        projection = { score: { $meta: 'textScore' } };
+      }
     }
 
     // Apply cursor pagination
     if (cursor) {
       try {
         const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
-        if (sort === 'views' && decoded.viewCount !== undefined) {
+        if (effectiveSort === 'views' && decoded.viewCount !== undefined) {
           query.$or = [
             { viewCount: { $lt: decoded.viewCount } },
             { viewCount: decoded.viewCount, _id: { $lt: decoded.id } },
@@ -451,13 +457,13 @@ async function getVideos(req, res, next) {
     }
 
     let sortOption = { publishedAt: -1, _id: -1 };
-    if (sort === 'views') {
+    if (effectiveSort === 'views') {
       sortOption = { viewCount: -1, _id: -1 };
-    } else if (q && sort === 'relevance') {
+    } else if (q && q.trim() && effectiveSort === 'relevance') {
       sortOption = { score: { $meta: 'textScore' }, _id: -1 };
     }
 
-    const videos = await Video.find(query)
+    const videos = await Video.find(query, projection)
       .sort(sortOption)
       .limit(limit + 1)
       .populate('owner', 'handle displayName avatarUrl')
@@ -498,6 +504,86 @@ async function getVideos(req, res, next) {
       items: formattedItems,
       nextCursor,
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Get related videos sharing tags, strictly excluding the current video
+ */
+async function getRelatedVideos(req, res, next) {
+  try {
+    const { id } = req.params;
+    const video = await Video.findById(id);
+
+    if (!video) {
+      throw new AppError('Video not found', 404, 'NOT_FOUND');
+    }
+
+    const currentUserId = req.user?._id?.toString();
+    const isOwner = currentUserId && currentUserId === video.owner.toString();
+
+    // Visibility rules: non-owners cannot see private or non-ready videos
+    if (video.visibility === 'private' && !isOwner) {
+      throw new AppError('Video not found', 404, 'NOT_FOUND');
+    }
+    if (video.status !== 'ready' && !isOwner) {
+      throw new AppError('Video not found', 404, 'NOT_FOUND');
+    }
+
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 20);
+
+    let relatedVideos = [];
+
+    // If video has tags, first find public ready videos sharing at least one tag
+    if (video.tags && video.tags.length > 0) {
+      relatedVideos = await Video.find({
+        _id: { $ne: video._id },
+        status: 'ready',
+        visibility: 'public',
+        tags: { $in: video.tags },
+      })
+        .sort({ viewCount: -1, publishedAt: -1 })
+        .limit(limit)
+        .populate('owner', 'handle displayName avatarUrl')
+        .lean();
+    }
+
+    // Backfill with newest public ready videos if fewer than limit
+    if (relatedVideos.length < limit) {
+      const existingIds = [video._id, ...relatedVideos.map((v) => v._id)];
+      const backfill = await Video.find({
+        _id: { $nin: existingIds },
+        status: 'ready',
+        visibility: 'public',
+      })
+        .sort({ publishedAt: -1, _id: -1 })
+        .limit(limit - relatedVideos.length)
+        .populate('owner', 'handle displayName avatarUrl')
+        .lean();
+
+      relatedVideos = [...relatedVideos, ...backfill];
+    }
+
+    const formattedItems = relatedVideos.map((v) => ({
+      id: v._id.toString(),
+      title: v.title,
+      description: v.description,
+      tags: v.tags,
+      thumbnailUrl: v.thumbnailUrl,
+      durationSec: v.durationSec,
+      viewCount: v.viewCount,
+      publishedAt: v.publishedAt || v.createdAt,
+      channel: {
+        id: v.owner ? v.owner._id.toString() : '',
+        handle: v.owner?.handle || 'creator',
+        displayName: v.owner?.displayName || 'Creator',
+        avatarUrl: v.owner?.avatarUrl || '',
+      },
+    }));
+
+    res.status(200).json({ items: formattedItems });
   } catch (err) {
     next(err);
   }
@@ -579,6 +665,7 @@ async function setReaction(req, res, next) {
 
 module.exports = {
   getVideos,
+  getRelatedVideos,
   createVideo,
   confirmVideoUpload,
   getMyVideos,

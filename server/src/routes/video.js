@@ -1,6 +1,7 @@
 const express = require('express');
 const {
   getVideos,
+  getRelatedVideos,
   createVideo,
   confirmVideoUpload,
   getVideoById,
@@ -23,6 +24,7 @@ const router = express.Router();
 
 router.get('/', getVideos);
 router.post('/', requireAuth, validateBody(createVideoSchema), createVideo);
+router.get('/:id/related', optionalAuth, getRelatedVideos);
 router.get('/:id', optionalAuth, getVideoById);
 router.post('/:id/confirm', requireAuth, confirmVideoUpload);
 router.post('/:id/view', optionalAuth, recordView);
