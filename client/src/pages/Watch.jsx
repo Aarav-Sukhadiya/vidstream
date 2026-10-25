@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Hls from 'hls.js';
 import api from '../api/client';
@@ -14,6 +14,10 @@ import {
   ThumbsUp,
   ThumbsDown,
   Loader2,
+  MessageSquare,
+  CornerDownRight,
+  Trash2,
+  Send,
 } from 'lucide-react';
 
 export default function Watch() {
@@ -34,6 +38,17 @@ export default function Watch() {
   const [streamError, setStreamError] = useState(false);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
 
+  // Reaction state
+  const [userReaction, setUserReaction] = useState(0); // 1 = like, -1 = dislike, 0 = none
+
+  // Comments state
+  const [comments, setComments] = useState([]);
+  const [commentsLoading, setCommentsLoading] = useState(true);
+  const [commentText, setCommentText] = useState('');
+  const [replyParentId, setReplyParentId] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
+
   // Tracking refs
   const viewCountedRef = useRef(false);
   const playTimeAccumulatedRef = useRef(0);
@@ -52,6 +67,7 @@ export default function Watch() {
       .then((res) => {
         if (!isMounted) return;
         setVideo(res.data.video);
+        setUserReaction(res.data.video.viewer?.reaction || 0);
       })
       .catch((err) => {
         if (!isMounted) return;
@@ -71,7 +87,24 @@ export default function Watch() {
     };
   }, [id]);
 
-  // 2. Initialize HLS player
+  // 2. Fetch comments
+  const fetchComments = useCallback(async () => {
+    try {
+      setCommentsLoading(true);
+      const res = await api.get(`/videos/${id}/comments`);
+      setComments(res.data.items || []);
+    } catch {
+      // ignore comment load errors
+    } finally {
+      setCommentsLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    fetchComments();
+  }, [fetchComments]);
+
+  // 3. Initialize HLS player
   useEffect(() => {
     if (!video || !video.hlsUrl || !videoRef.current) return;
 
@@ -90,7 +123,6 @@ export default function Watch() {
 
       hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
         setLevels(data.levels);
-        // Resume saved playback position if available
         if (video.viewer?.progressSec && video.viewer.progressSec > 0) {
           videoEl.currentTime = video.viewer.progressSec;
         }
@@ -117,7 +149,6 @@ export default function Watch() {
         }
       });
     } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-      // Native Safari HLS
       videoEl.src = video.hlsUrl;
       videoEl.addEventListener('loadedmetadata', () => {
         if (video.viewer?.progressSec && video.viewer.progressSec > 0) {
@@ -136,20 +167,18 @@ export default function Watch() {
     };
   }, [video]);
 
-  // 3. View counting & play time accumulation
+  // 4. View counting & accumulation
   const handleTimeUpdate = () => {
     if (!videoRef.current || viewCountedRef.current) return;
 
     const currentTime = videoRef.current.currentTime;
     const delta = Math.abs(currentTime - lastTimeRef.current);
 
-    // If reasonable delta (not seeking), accumulate play time
     if (delta < 2 && isPlaying) {
       playTimeAccumulatedRef.current += delta;
     }
     lastTimeRef.current = currentTime;
 
-    // Trigger threshold: 30s or half the video duration if under 60s
     const threshold = video?.durationSec && video.durationSec < 60 ? video.durationSec / 2 : 30;
 
     if (playTimeAccumulatedRef.current >= threshold && !viewCountedRef.current) {
@@ -165,7 +194,7 @@ export default function Watch() {
     }
   };
 
-  // 4. Save playback position every 10s if authenticated
+  // 5. Periodic playback progress
   useEffect(() => {
     if (!user || !video) return;
 
@@ -187,6 +216,153 @@ export default function Watch() {
       }
     };
   }, [user, id, video, isPlaying]);
+
+  // 6. Optimistic Like & Dislike
+  const handleReaction = async (targetValue) => {
+    if (!user) {
+      alert('Please sign in to like or dislike videos.');
+      return;
+    }
+
+    const nextValue = userReaction === targetValue ? 0 : targetValue;
+    const previousReaction = userReaction;
+    const previousLikeCount = video.likeCount || 0;
+    const previousDislikeCount = video.dislikeCount || 0;
+
+    let newLikeCount = previousLikeCount;
+    let newDislikeCount = previousDislikeCount;
+
+    if (previousReaction === 1) newLikeCount = Math.max(0, newLikeCount - 1);
+    if (previousReaction === -1) newDislikeCount = Math.max(0, newDislikeCount - 1);
+
+    if (nextValue === 1) newLikeCount += 1;
+    if (nextValue === -1) newDislikeCount += 1;
+
+    setUserReaction(nextValue);
+    setVideo((prev) => ({
+      ...prev,
+      likeCount: newLikeCount,
+      dislikeCount: newDislikeCount,
+    }));
+
+    try {
+      const res = await api.put(`/videos/${id}/reaction`, { value: nextValue });
+      setUserReaction(res.data.userReaction);
+      setVideo((prev) => ({
+        ...prev,
+        likeCount: res.data.likeCount,
+        dislikeCount: res.data.dislikeCount,
+      }));
+    } catch (err) {
+      setUserReaction(previousReaction);
+      setVideo((prev) => ({
+        ...prev,
+        likeCount: previousLikeCount,
+        dislikeCount: previousDislikeCount,
+      }));
+      alert(err.response?.data?.error?.message || 'Failed to update reaction');
+    }
+  };
+
+  // 7. Comments handling
+  const handleAddComment = async (e, parentId = null) => {
+    e.preventDefault();
+    const text = parentId ? replyText.trim() : commentText.trim();
+    if (!text) return;
+
+    if (!user) {
+      alert('Please sign in to comment.');
+      return;
+    }
+
+    setSubmittingComment(true);
+    try {
+      const res = await api.post(`/videos/${id}/comments`, {
+        body: text,
+        parentId,
+      });
+
+      if (parentId) {
+        setReplyParentId(null);
+        setReplyText('');
+        fetchComments();
+      } else {
+        setCommentText('');
+        setComments((prev) => [res.data.comment, ...prev]);
+        setVideo((prev) => (prev ? { ...prev, commentCount: (prev.commentCount || 0) + 1 } : prev));
+      }
+    } catch (err) {
+      alert(err.response?.data?.error?.message || 'Failed to post comment.');
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    if (!confirm('Are you sure you want to delete this comment?')) return;
+    try {
+      await api.delete(`/comments/${commentId}`);
+      setComments((prev) => prev.filter((c) => c.id !== commentId));
+      setVideo((prev) =>
+        prev ? { ...prev, commentCount: Math.max(0, (prev.commentCount || 0) - 1) } : prev
+      );
+    } catch (err) {
+      alert(err.response?.data?.error?.message || 'Failed to delete comment');
+    }
+  };
+
+  // 8. Clickable Timestamp Parser (e.g. 02:15, 1:45)
+  const seekToTimestamp = (seconds) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = seconds;
+      videoRef.current.play().catch(() => {});
+      videoRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
+
+  const renderTextWithTimestamps = (text) => {
+    const timestampRegex = /\b(?:(\d{1,2}):)?([0-5]?\d):([0-5]\d)\b/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = timestampRegex.exec(text)) !== null) {
+      const fullMatch = match[0];
+      const matchIndex = match.index;
+
+      if (matchIndex > lastIndex) {
+        parts.push(text.substring(lastIndex, matchIndex));
+      }
+
+      let totalSec = 0;
+      if (match[1]) {
+        // hh:mm:ss
+        totalSec = parseInt(match[1], 10) * 3600 + parseInt(match[2], 10) * 60 + parseInt(match[3], 10);
+      } else {
+        // mm:ss
+        totalSec = parseInt(match[2], 10) * 60 + parseInt(match[3], 10);
+      }
+
+      parts.push(
+        <button
+          key={matchIndex}
+          type="button"
+          onClick={() => seekToTimestamp(totalSec)}
+          className="text-red-400 hover:text-red-300 font-mono font-semibold hover:underline px-1 py-0.5 rounded bg-red-500/10 transition cursor-pointer"
+        >
+          {fullMatch}
+        </button>
+      );
+
+      lastIndex = matchIndex + fullMatch.length;
+    }
+
+    if (lastIndex < text.length) {
+      parts.push(text.substring(lastIndex));
+    }
+
+    return parts.length > 0 ? parts : text;
+  };
 
   const handleQualityChange = (levelIndex) => {
     if (hlsRef.current) {
@@ -234,8 +410,8 @@ export default function Watch() {
   return (
     <div className="max-w-6xl mx-auto py-6">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Main Video & Details Column */}
-        <div className="lg:col-span-2 space-y-5">
+        {/* Main Video & Discussion Column */}
+        <div className="lg:col-span-2 space-y-6">
           {/* Video Player Wrapper */}
           <div className="relative aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-slate-800 group">
             {streamError ? (
@@ -307,7 +483,7 @@ export default function Watch() {
             )}
           </div>
 
-          {/* Title & Stats */}
+          {/* Title & Actions Bar */}
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight leading-snug">
               {video.title}
@@ -329,15 +505,34 @@ export default function Watch() {
                 </div>
               </div>
 
-              {/* Action Buttons (Likes, Share) */}
+              {/* Action Buttons (Like, Dislike, Share) */}
               <div className="flex items-center gap-2">
                 <div className="flex items-center bg-slate-900 border border-slate-800 rounded-full overflow-hidden">
-                  <button className="flex items-center gap-1.5 px-3.5 py-1.5 hover:bg-slate-800 text-xs font-semibold text-slate-200 border-r border-slate-800 transition">
-                    <ThumbsUp className="w-4 h-4 text-slate-400" />
+                  <button
+                    onClick={() => handleReaction(1)}
+                    className={`flex items-center gap-1.5 px-3.5 py-1.5 hover:bg-slate-800 text-xs font-semibold border-r border-slate-800 transition cursor-pointer ${
+                      userReaction === 1 ? 'text-red-400 bg-red-500/10' : 'text-slate-200'
+                    }`}
+                  >
+                    <ThumbsUp
+                      className={`w-4 h-4 ${
+                        userReaction === 1 ? 'fill-current text-red-500' : 'text-slate-400'
+                      }`}
+                    />
                     <span>{video.likeCount || 0}</span>
                   </button>
-                  <button className="px-3 py-1.5 hover:bg-slate-800 text-xs text-slate-400 hover:text-white transition">
-                    <ThumbsDown className="w-4 h-4" />
+
+                  <button
+                    onClick={() => handleReaction(-1)}
+                    className={`px-3 py-1.5 hover:bg-slate-800 text-xs transition cursor-pointer ${
+                      userReaction === -1 ? 'text-red-400 bg-red-500/10' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <ThumbsDown
+                      className={`w-4 h-4 ${
+                        userReaction === -1 ? 'fill-current text-red-500' : ''
+                      }`}
+                    />
                   </button>
                 </div>
 
@@ -346,7 +541,7 @@ export default function Watch() {
                     navigator.clipboard.writeText(window.location.href);
                     alert('Video link copied to clipboard!');
                   }}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-200 rounded-full transition"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-200 rounded-full transition cursor-pointer"
                 >
                   <Share2 className="w-4 h-4" />
                   <span>Share</span>
@@ -355,7 +550,7 @@ export default function Watch() {
             </div>
           </div>
 
-          {/* Expandable Description Box */}
+          {/* Description Box */}
           <div className="p-4 bg-slate-900/60 border border-slate-800/80 rounded-2xl text-sm text-slate-300 space-y-2">
             <div className="flex items-center gap-4 text-xs font-semibold text-slate-400">
               <span className="flex items-center gap-1">
@@ -364,13 +559,10 @@ export default function Watch() {
               </span>
               <span className="flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5" />
-                <span>
-                  {new Date(video.publishedAt || video.createdAt).toLocaleDateString()}
-                </span>
+                <span>{new Date(video.publishedAt || video.createdAt).toLocaleDateString()}</span>
               </span>
             </div>
 
-            {/* Tags */}
             {video.tags && video.tags.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {video.tags.map((tag) => (
@@ -399,6 +591,160 @@ export default function Watch() {
               >
                 {descriptionExpanded ? 'Show less' : 'Show more'}
               </button>
+            )}
+          </div>
+
+          {/* Discussion & Timestamped Comments Section (Checkpoint 16 - Gate 2) */}
+          <div className="pt-4 space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-red-500" />
+                <span>{video.commentCount || comments.length} Comments</span>
+              </h2>
+            </div>
+
+            {/* Comment Input Box */}
+            {user ? (
+              <form onSubmit={handleAddComment} className="flex gap-3">
+                <div className="w-9 h-9 rounded-full bg-red-600/20 text-red-400 border border-red-500/30 flex items-center justify-center font-bold text-xs flex-shrink-0 mt-0.5">
+                  {user.displayName?.[0]?.toUpperCase() || 'U'}
+                </div>
+                <div className="flex-1 space-y-2">
+                  <textarea
+                    rows={2}
+                    maxLength={1000}
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    placeholder="Add a comment... (Tip: include timestamps like 02:15 to link directly to playback moments!)"
+                    className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-red-500 resize-none transition"
+                  />
+                  {commentText.trim() && (
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCommentText('')}
+                        className="px-3.5 py-1.5 text-xs text-slate-400 hover:text-white transition"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={submittingComment}
+                        className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded-lg shadow-sm shadow-red-600/30 transition cursor-pointer"
+                      >
+                        {submittingComment ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Send className="w-3.5 h-3.5" />
+                        )}
+                        <span>Comment</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </form>
+            ) : (
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 text-xs text-slate-400 flex items-center justify-between">
+                <span>Want to join the conversation? Sign in to post timestamped comments and replies.</span>
+                <Link
+                  to="/login"
+                  className="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg font-semibold"
+                >
+                  Sign In
+                </Link>
+              </div>
+            )}
+
+            {/* Comments List */}
+            {commentsLoading ? (
+              <div className="flex justify-center py-6 text-slate-500">
+                <Loader2 className="w-6 h-6 animate-spin text-red-500" />
+              </div>
+            ) : comments.length === 0 ? (
+              <p className="text-center py-8 text-xs text-slate-500 italic">
+                No comments yet. Be the first to share your thoughts!
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {comments.map((comment) => (
+                  <div
+                    key={comment.id}
+                    className="p-4 rounded-xl bg-slate-900/50 border border-slate-800/80 space-y-2 hover:border-slate-700/80 transition"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-full bg-slate-800 text-slate-300 border border-slate-700 flex items-center justify-center font-bold text-xs">
+                          {comment.author?.displayName?.[0]?.toUpperCase() || 'U'}
+                        </div>
+                        <div>
+                          <span className="text-xs font-semibold text-white mr-1.5">
+                            {comment.author?.displayName || 'User'}
+                          </span>
+                          <span className="text-[11px] text-slate-500">
+                            @{comment.author?.handle} &bull;{' '}
+                            {new Date(comment.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      {user && user.id === comment.author?.id && (
+                        <button
+                          onClick={() => handleDeleteComment(comment.id)}
+                          title="Delete comment"
+                          className="p-1.5 text-slate-500 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Comment Body with Clickable Timestamps */}
+                    <div className="text-xs text-slate-200 leading-relaxed pl-9">
+                      {renderTextWithTimestamps(comment.body)}
+                    </div>
+
+                    {/* Inline Reply Trigger */}
+                    <div className="pl-9 pt-1 flex items-center gap-3 text-[11px] text-slate-400">
+                      <button
+                        onClick={() =>
+                          setReplyParentId(replyParentId === comment.id ? null : comment.id)
+                        }
+                        className="hover:text-white flex items-center gap-1 cursor-pointer"
+                      >
+                        <CornerDownRight className="w-3 h-3" />
+                        <span>Reply</span>
+                      </button>
+                      {comment.replyCount > 0 && (
+                        <span>&bull; {comment.replyCount} {comment.replyCount === 1 ? 'reply' : 'replies'}</span>
+                      )}
+                    </div>
+
+                    {/* Inline Reply Form */}
+                    {replyParentId === comment.id && (
+                      <form
+                        onSubmit={(e) => handleAddComment(e, comment.id)}
+                        className="pl-9 pt-2 flex gap-2"
+                      >
+                        <input
+                          type="text"
+                          maxLength={1000}
+                          value={replyText}
+                          onChange={(e) => setReplyText(e.target.value)}
+                          placeholder="Write a reply..."
+                          className="flex-1 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-red-500"
+                        />
+                        <button
+                          type="submit"
+                          disabled={submittingComment || !replyText.trim()}
+                          className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-semibold transition"
+                        >
+                          Reply
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
