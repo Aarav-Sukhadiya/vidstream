@@ -29,6 +29,9 @@ jobs:
       - name: Install server dependencies
         run: npm ci --prefix server
 
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Lint server
         run: npm run lint --prefix server
 
@@ -37,6 +40,11 @@ jobs:
         env:
           NODE_ENV: test
           MONGODB_URI: mongodb://localhost:27017/vidstream_test
+          JWT_ACCESS_SECRET: test_access_token_secret_for_jwt_32_characters_minimum
+          JWT_REFRESH_SECRET: test_refresh_token_secret_for_jwt_32_characters_minimum
+          CLOUDINARY_API_KEY: mock_key
+          CLOUDINARY_API_SECRET: mock_secret
+          CLOUDINARY_CLOUD_NAME: mock_cloud
 
   client:
     name: Client Checks

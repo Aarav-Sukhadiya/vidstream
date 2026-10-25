@@ -7,10 +7,9 @@ async function handleCloudinaryWebhook(req, res, next) {
   try {
     const timestamp = req.headers['x-cld-timestamp'];
     const signature = req.headers['x-cld-signature'];
-    const secret = process.env.CLOUDINARY_WEBHOOK_SECRET || process.env.CLOUDINARY_API_SECRET;
 
     // Verify signature if provided or in production
-    if (signature && timestamp && secret) {
+    if (signature && timestamp) {
       const isValid = cloudinary.utils.verifyNotificationSignature(
         JSON.stringify(req.body),
         timestamp,
