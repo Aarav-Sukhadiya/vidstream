@@ -5,6 +5,7 @@ const Video = require('../models/Video');
 const Job = require('../models/Job');
 const ViewEvent = require('../models/ViewEvent');
 const WatchProgress = require('../models/WatchProgress');
+const Reaction = require('../models/Reaction');
 const { generateSignedUploadParams } = require('../services/storage');
 const { enqueueTranscodeJob } = require('../workers/queue');
 const { TEMP_BASE } = require('../workers');
@@ -313,15 +314,16 @@ async function getVideoById(req, res, next) {
       },
     };
 
-    // Attach viewer progress if authenticated
+    // Attach viewer progress and reaction if authenticated
     if (req.user) {
-      const progress = await WatchProgress.findOne({
-        user: req.user._id,
-        video: video._id,
-      });
+      const [progress, reaction] = await Promise.all([
+        WatchProgress.findOne({ user: req.user._id, video: video._id }),
+        Reaction.findOne({ user: req.user._id, video: video._id }),
+      ]);
 
       videoObj.viewer = {
         progressSec: progress ? progress.positionSec : 0,
+        reaction: reaction ? reaction.value : 0,
         isOwner,
       };
     }
@@ -501,6 +503,80 @@ async function getVideos(req, res, next) {
   }
 }
 
+/**
+ * Set or toggle like / dislike reaction on a video
+ */
+async function setReaction(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { value } = req.body; // 1 = like, -1 = dislike, 0 = clear
+
+    if (![1, -1, 0].includes(value)) {
+      throw new AppError('Reaction value must be 1, -1, or 0', 400, 'VALIDATION');
+    }
+
+    const video = await Video.findById(id);
+    if (!video) {
+      throw new AppError('Video not found', 404, 'NOT_FOUND');
+    }
+
+    const existing = await Reaction.findOne({ user: req.user._id, video: id });
+
+    if (value === 0) {
+      // Clear reaction
+      if (existing) {
+        if (existing.value === 1) {
+          await Video.updateOne({ _id: id }, { $inc: { likeCount: -1 } });
+        } else if (existing.value === -1) {
+          await Video.updateOne({ _id: id }, { $inc: { dislikeCount: -1 } });
+        }
+        await Reaction.deleteOne({ _id: existing._id });
+      }
+    } else if (value === 1) {
+      // Like
+      if (!existing) {
+        try {
+          await Reaction.create({ user: req.user._id, video: id, value: 1 });
+          await Video.updateOne({ _id: id }, { $inc: { likeCount: 1 } });
+        } catch (err) {
+          if (err.code !== 11000) throw err;
+        }
+      } else if (existing.value === -1) {
+        existing.value = 1;
+        await existing.save();
+        await Video.updateOne({ _id: id }, { $inc: { likeCount: 1, dislikeCount: -1 } });
+      }
+      // If already liked (existing.value === 1), idempotent no-op
+    } else if (value === -1) {
+      // Dislike
+      if (!existing) {
+        try {
+          await Reaction.create({ user: req.user._id, video: id, value: -1 });
+          await Video.updateOne({ _id: id }, { $inc: { dislikeCount: 1 } });
+        } catch (err) {
+          if (err.code !== 11000) throw err;
+        }
+      } else if (existing.value === 1) {
+        existing.value = -1;
+        await existing.save();
+        await Video.updateOne({ _id: id }, { $inc: { dislikeCount: 1, likeCount: -1 } });
+      }
+      // If already disliked (existing.value === -1), idempotent no-op
+    }
+
+    const updatedVideo = await Video.findById(id).select('likeCount dislikeCount');
+
+    res.status(200).json({
+      success: true,
+      userReaction: value,
+      likeCount: Math.max(0, updatedVideo.likeCount || 0),
+      dislikeCount: Math.max(0, updatedVideo.dislikeCount || 0),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getVideos,
   createVideo,
@@ -509,6 +585,7 @@ module.exports = {
   getVideoById,
   recordView,
   saveProgress,
+  setReaction,
   retryVideo,
   updateVideo,
   deleteVideo,

@@ -9,6 +9,7 @@ describe('Home Feed & Cursor Pagination Suite (Checkpoint 17)', () => {
 
   beforeAll(async () => {
     await connectDB();
+    await Video.deleteMany({});
     await User.deleteMany({ email: 'feed_author@test.com' });
 
     feedUser = await User.create({
