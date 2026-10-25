@@ -10,6 +10,7 @@ import {
   Eye,
   Calendar,
   Compass,
+  RotateCcw,
 } from 'lucide-react';
 
 export default function History() {
@@ -97,9 +98,21 @@ export default function History() {
       </div>
 
       {error && (
-        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center gap-3 text-sm text-red-400">
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          <span>{error}</span>
+        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-between gap-3 text-sm text-red-400">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={() => {
+              setLoading(true);
+              fetchHistory();
+            }}
+            className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium text-xs transition cursor-pointer flex items-center gap-1.5 flex-shrink-0"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Retry</span>
+          </button>
         </div>
       )}
 

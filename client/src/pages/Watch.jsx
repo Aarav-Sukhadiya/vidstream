@@ -481,12 +481,41 @@ export default function Watch() {
         </div>
         <h2 className="text-xl font-bold text-white mb-2">Video Unavailable</h2>
         <p className="text-sm text-slate-400 mb-6">{error || 'This video could not be found.'}</p>
-        <Link
-          to="/"
-          className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold rounded-xl transition"
-        >
-          Return to Home
-        </Link>
+        <div className="flex items-center justify-center gap-3">
+          <button
+            onClick={() => {
+              setLoading(true);
+              setError(null);
+              api
+                .get(`/videos/${id}`)
+                .then((res) => {
+                  setVideo(res.data.video);
+                  setUserReaction(res.data.video.viewer?.reaction || 0);
+                  setIsSubscribed(res.data.video.viewer?.subscribed || false);
+                  setSubscriberCount(res.data.video.channel?.subscriberCount || 0);
+                })
+                .catch((err) => {
+                  const status = err.response?.status;
+                  if (status === 404) {
+                    setError('This video is private, processing, or does not exist.');
+                  } else {
+                    setError(err.response?.data?.error?.message || 'Failed to load video.');
+                  }
+                })
+                .finally(() => setLoading(false));
+            }}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white text-sm font-semibold rounded-xl transition cursor-pointer"
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>Retry</span>
+          </button>
+          <Link
+            to="/"
+            className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold rounded-xl transition"
+          >
+            Return to Home
+          </Link>
+        </div>
       </div>
     );
   }

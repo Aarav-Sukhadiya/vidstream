@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import AppShell from './components/AppShell';
+import ErrorBoundary from './components/ErrorBoundary';
 import GuestRoute from './components/GuestRoute';
 import ProtectedRoute from './components/ProtectedRoute';
 import Home from './pages/Home';
@@ -32,7 +33,8 @@ export default function App() {
       <BrowserRouter>
         <AuthProvider>
           <AppShell>
-            <Routes>
+            <ErrorBoundary>
+              <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/search" element={<Search />} />
               <Route path="/watch/:id" element={<Watch />} />
@@ -95,7 +97,8 @@ export default function App() {
               />
               <Route path="*" element={<NotFound />} />
             </Routes>
-          </AppShell>
+          </ErrorBoundary>
+        </AppShell>
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
