@@ -11,6 +11,10 @@ import Register from './pages/Register';
 import Upload from './pages/Upload';
 import Studio from './pages/Studio';
 import Watch from './pages/Watch';
+import Channel from './pages/Channel';
+import Subscriptions from './pages/Subscriptions';
+import History from './pages/History';
+import Liked from './pages/Liked';
 import NotFound from './pages/NotFound';
 
 const queryClient = new QueryClient({
@@ -32,6 +36,31 @@ export default function App() {
               <Route path="/" element={<Home />} />
               <Route path="/search" element={<Search />} />
               <Route path="/watch/:id" element={<Watch />} />
+              <Route path="/c/:handle" element={<Channel />} />
+              <Route
+                path="/subscriptions"
+                element={
+                  <ProtectedRoute>
+                    <Subscriptions />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/history"
+                element={
+                  <ProtectedRoute>
+                    <History />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/liked"
+                element={
+                  <ProtectedRoute>
+                    <Liked />
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="/upload"
                 element={

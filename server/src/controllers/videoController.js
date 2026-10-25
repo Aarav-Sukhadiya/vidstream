@@ -6,6 +6,7 @@ const Job = require('../models/Job');
 const ViewEvent = require('../models/ViewEvent');
 const WatchProgress = require('../models/WatchProgress');
 const Reaction = require('../models/Reaction');
+const Subscription = require('../models/Subscription');
 const { generateSignedUploadParams } = require('../services/storage');
 const { enqueueTranscodeJob } = require('../workers/queue');
 const { TEMP_BASE } = require('../workers');
@@ -314,16 +315,18 @@ async function getVideoById(req, res, next) {
       },
     };
 
-    // Attach viewer progress and reaction if authenticated
+    // Attach viewer progress, reaction, and subscription if authenticated
     if (req.user) {
-      const [progress, reaction] = await Promise.all([
+      const [progress, reaction, subscription] = await Promise.all([
         WatchProgress.findOne({ user: req.user._id, video: video._id }),
         Reaction.findOne({ user: req.user._id, video: video._id }),
+        Subscription.findOne({ subscriber: req.user._id, channel: video.owner._id }),
       ]);
 
       videoObj.viewer = {
         progressSec: progress ? progress.positionSec : 0,
         reaction: reaction ? reaction.value : 0,
+        subscribed: !!subscription,
         isOwner,
       };
     }
