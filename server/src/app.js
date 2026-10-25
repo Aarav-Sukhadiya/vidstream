@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const healthRoutes = require('./routes/health');
 const authRoutes = require('./routes/auth');
+const meRoutes = require('./routes/me');
 const { errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
@@ -34,6 +35,10 @@ app.use('/api', healthRoutes);
 // Authentication routes
 app.use('/api/auth', authRoutes);
 app.use('/auth', authRoutes);
+
+// Current user profile route
+app.use('/api/me', meRoutes);
+app.use('/me', meRoutes);
 
 // Catch-all 404 for unknown routes
 app.use((req, res) => {

@@ -43,11 +43,22 @@ function getRefreshTokenCookieOptions() {
   };
 }
 
+function getClearCookieOptions() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  return {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+    path: '/',
+  };
+}
+
 module.exports = {
   generateAccessToken,
   generateRefreshToken,
   hashToken,
   getRefreshTokenCookieOptions,
+  getClearCookieOptions,
   REFRESH_TOKEN_EXPIRY_DAYS,
   getAccessSecret,
   getRefreshSecret,
