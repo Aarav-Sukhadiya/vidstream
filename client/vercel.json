@@ -3,15 +3,15 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://vidstream-api.onrender.com/api/:path*"
+      "destination": "https://vidstream-api-508y.onrender.com/api/:path*"
     },
     {
       "source": "/media/:path*",
-      "destination": "https://vidstream-api.onrender.com/media/:path*"
+      "destination": "https://vidstream-api-508y.onrender.com/media/:path*"
     },
     {
       "source": "/socket.io/:path*",
-      "destination": "https://vidstream-api.onrender.com/socket.io/:path*"
+      "destination": "https://vidstream-api-508y.onrender.com/socket.io/:path*"
     },
     {
       "source": "/(.*)",
