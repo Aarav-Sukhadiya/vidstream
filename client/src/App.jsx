@@ -5,6 +5,7 @@ import AppShell from './components/AppShell';
 import GuestRoute from './components/GuestRoute';
 import ProtectedRoute from './components/ProtectedRoute';
 import Home from './pages/Home';
+import Search from './pages/Search';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Upload from './pages/Upload';
@@ -29,6 +30,7 @@ export default function App() {
           <AppShell>
             <Routes>
               <Route path="/" element={<Home />} />
+              <Route path="/search" element={<Search />} />
               <Route path="/watch/:id" element={<Watch />} />
               <Route
                 path="/upload"

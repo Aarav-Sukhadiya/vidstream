@@ -18,7 +18,24 @@ import {
   CornerDownRight,
   Trash2,
   Send,
+  Video as VideoIcon,
 } from 'lucide-react';
+
+function formatDuration(sec) {
+  if (!sec) return '0:00';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s < 10 ? '0' : ''}${s}`;
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  const diff = Math.floor((new Date() - new Date(dateStr)) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
 
 export default function Watch() {
   const { id } = useParams();
@@ -48,6 +65,10 @@ export default function Watch() {
   const [replyParentId, setReplyParentId] = useState(null);
   const [replyText, setReplyText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
+
+  // Related videos state
+  const [relatedVideos, setRelatedVideos] = useState([]);
+  const [relatedLoading, setRelatedLoading] = useState(true);
 
   // Tracking refs
   const viewCountedRef = useRef(false);
@@ -103,6 +124,29 @@ export default function Watch() {
   useEffect(() => {
     fetchComments();
   }, [fetchComments]);
+
+  // 2b. Fetch related videos
+  useEffect(() => {
+    let isMounted = true;
+    setRelatedLoading(true);
+    api
+      .get(`/videos/${id}/related`)
+      .then((res) => {
+        if (!isMounted) return;
+        setRelatedVideos(res.data.items || []);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setRelatedVideos([]);
+      })
+      .finally(() => {
+        if (isMounted) setRelatedLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [id]);
 
   // 3. Initialize HLS player
   useEffect(() => {
@@ -751,10 +795,71 @@ export default function Watch() {
 
         {/* Sidebar Column: Related Content */}
         <div className="space-y-4">
-          <h3 className="font-bold text-base text-white">Up Next</h3>
-          <div className="p-6 rounded-2xl border border-dashed border-slate-800 bg-slate-900/30 text-center text-xs text-slate-400">
-            <p>Related videos and recommendations are updated dynamically based on tags.</p>
+          <div className="flex items-center justify-between pb-1 border-b border-slate-800/80">
+            <h3 className="font-bold text-sm text-white">Up Next</h3>
+            <span className="text-[11px] text-slate-400">Related videos</span>
           </div>
+
+          {relatedLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3, 4].map((n) => (
+                <div key={n} className="flex gap-3 animate-pulse p-1">
+                  <div className="w-36 h-20 bg-slate-800 rounded-xl flex-shrink-0" />
+                  <div className="flex-1 space-y-2 py-1">
+                    <div className="h-3.5 bg-slate-800 rounded w-full" />
+                    <div className="h-3 bg-slate-800 rounded w-2/3" />
+                    <div className="h-2.5 bg-slate-800 rounded w-1/3" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : relatedVideos.length === 0 ? (
+            <div className="p-6 rounded-2xl border border-dashed border-slate-800 bg-slate-900/30 text-center text-xs text-slate-400">
+              <p>No related videos found.</p>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {relatedVideos.map((item) => (
+                <Link
+                  key={item.id}
+                  to={`/watch/${item.id}`}
+                  className="group flex gap-3 p-1.5 rounded-xl hover:bg-slate-900/80 border border-transparent hover:border-slate-800 transition"
+                >
+                  <div className="relative w-36 h-20 bg-slate-800 rounded-lg overflow-hidden flex-shrink-0">
+                    {item.thumbnailUrl ? (
+                      <img
+                        src={item.thumbnailUrl}
+                        alt={item.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-600">
+                        <VideoIcon className="w-6 h-6" />
+                      </div>
+                    )}
+                    <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/80 backdrop-blur text-[10px] font-semibold text-white">
+                      {formatDuration(item.durationSec)}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0 py-0.5 flex flex-col justify-between">
+                    <div>
+                      <h4 className="text-xs font-semibold text-slate-200 group-hover:text-red-400 line-clamp-2 transition leading-tight">
+                        {item.title}
+                      </h4>
+                      <p className="text-[11px] text-slate-400 hover:text-slate-300 mt-1 truncate">
+                        {item.channel?.displayName || 'Creator'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-1">
+                      <span>{item.viewCount?.toLocaleString() || 0} views</span>
+                      <span>&bull;</span>
+                      <span>{timeAgo(item.publishedAt)}</span>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
