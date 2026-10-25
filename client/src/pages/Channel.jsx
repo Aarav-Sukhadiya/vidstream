@@ -11,6 +11,7 @@ import {
   Loader2,
   Calendar,
   Eye,
+  RotateCcw,
 } from 'lucide-react';
 
 export default function Channel() {
@@ -110,12 +111,24 @@ export default function Channel() {
         </div>
         <h2 className="text-xl font-bold text-white">Channel Not Found</h2>
         <p className="text-sm text-slate-400">{error || 'This channel does not exist.'}</p>
-        <Link
-          to="/"
-          className="inline-block px-5 py-2.5 rounded-full bg-slate-800 hover:bg-slate-700 text-sm font-semibold text-white transition"
-        >
-          Return Home
-        </Link>
+        <div className="flex items-center justify-center gap-3">
+          <button
+            onClick={() => {
+              setLoading(true);
+              fetchChannelData();
+            }}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-red-600 hover:bg-red-500 text-white font-semibold text-xs sm:text-sm transition cursor-pointer"
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>Retry</span>
+          </button>
+          <Link
+            to="/"
+            className="inline-block px-5 py-2.5 rounded-full bg-slate-800 hover:bg-slate-700 text-sm font-semibold text-white transition"
+          >
+            Return Home
+          </Link>
+        </div>
       </div>
     );
   }

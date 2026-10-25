@@ -55,46 +55,63 @@ describe('Watch History and Liked Videos Suite (Checkpoint 20)', () => {
 
     // Create watch progress records with different updated times
     const now = Date.now();
-    await WatchProgress.create({
+    const wp1 = await WatchProgress.create({
       user: testUser._id,
       video: video1._id,
       positionSec: 150,
       durationSec: 600,
-      updatedAt: new Date(now - 10000),
     });
+    await WatchProgress.updateOne(
+      { _id: wp1._id },
+      { $set: { updatedAt: new Date(now - 10000) } },
+      { timestamps: false }
+    );
 
-    await WatchProgress.create({
+    const wp2 = await WatchProgress.create({
       user: testUser._id,
       video: video2._id,
       positionSec: 270,
       durationSec: 300,
-      updatedAt: new Date(now), // newer
     });
+    await WatchProgress.updateOne(
+      { _id: wp2._id },
+      { $set: { updatedAt: new Date(now) } },
+      { timestamps: false }
+    );
 
     // Create reactions: video1 liked, video2 liked later, video3 disliked
-    await Reaction.create({
+    const r1 = await Reaction.create({
       user: testUser._id,
       video: video1._id,
       value: 1,
-      createdAt: new Date(now - 20000),
-      updatedAt: new Date(now - 20000),
     });
+    await Reaction.updateOne(
+      { _id: r1._id },
+      { $set: { createdAt: new Date(now - 20000), updatedAt: new Date(now - 20000) } },
+      { timestamps: false }
+    );
 
-    await Reaction.create({
+    const r2 = await Reaction.create({
       user: testUser._id,
       video: video2._id,
       value: 1,
-      createdAt: new Date(now - 5000),
-      updatedAt: new Date(now - 5000), // newer like
     });
+    await Reaction.updateOne(
+      { _id: r2._id },
+      { $set: { createdAt: new Date(now - 5000), updatedAt: new Date(now - 5000) } },
+      { timestamps: false }
+    );
 
-    await Reaction.create({
+    const r3 = await Reaction.create({
       user: testUser._id,
       video: video3._id,
       value: -1, // dislike
-      createdAt: new Date(now),
-      updatedAt: new Date(now),
     });
+    await Reaction.updateOne(
+      { _id: r3._id },
+      { $set: { createdAt: new Date(now), updatedAt: new Date(now) } },
+      { timestamps: false }
+    );
   });
 
   afterAll(async () => {

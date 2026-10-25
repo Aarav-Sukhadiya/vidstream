@@ -13,6 +13,8 @@ const webhookRoutes = require('./routes/webhook');
 const commentRoutes = require('./routes/comment');
 const channelRoutes = require('./routes/channel');
 const feedRoutes = require('./routes/feed');
+const { mongoSanitize } = require('./middleware/sanitize');
+const { apiRateLimiter } = require('./middleware/rateLimit');
 const { errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
@@ -34,6 +36,8 @@ app.use(
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(mongoSanitize);
+app.use('/api', apiRateLimiter);
 
 // Static media delivery for transcoded HLS streams and thumbnails
 app.use('/media', express.static(path.join(__dirname, '../temp')));
