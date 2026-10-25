@@ -212,8 +212,21 @@ export default function Watch() {
     }
 
     return () => {
+      if (videoEl) {
+        try {
+          videoEl.pause();
+          videoEl.removeAttribute('src');
+          videoEl.load();
+        } catch {
+          // ignore cleanup errors
+        }
+      }
       if (hls) {
-        hls.destroy();
+        try {
+          hls.destroy();
+        } catch {
+          // ignore cleanup errors
+        }
         hlsRef.current = null;
       }
     };
