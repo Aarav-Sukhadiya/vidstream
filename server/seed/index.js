@@ -3,6 +3,10 @@ const bcrypt = require('bcryptjs');
 const { connectDB, disconnectDB } = require('../src/config/db');
 const User = require('../src/models/User');
 const Video = require('../src/models/Video');
+const Subscription = require('../src/models/Subscription');
+const Comment = require('../src/models/Comment');
+const Reaction = require('../src/models/Reaction');
+const WatchProgress = require('../src/models/WatchProgress');
 
 async function seed() {
   console.log('[Seed] Connecting to MongoDB...');
@@ -15,6 +19,10 @@ async function seed() {
     const userIds = existingUsers.map((u) => u._id);
 
     await Video.deleteMany({ owner: { $in: userIds } });
+    await Subscription.deleteMany({ $or: [{ subscriber: { $in: userIds } }, { channel: { $in: userIds } }] });
+    await Comment.deleteMany({ author: { $in: userIds } });
+    await Reaction.deleteMany({ user: { $in: userIds } });
+    await WatchProgress.deleteMany({ user: { $in: userIds } });
     await User.deleteMany({ email: { $in: demoEmails } });
 
     console.log('[Seed] Creating demo users...');
@@ -281,8 +289,75 @@ async function seed() {
       },
     ];
 
-    await Video.create(videosData);
-    console.log(`[Seed] Successfully seeded 3 demo users and ${videosData.length} ready videos!`);
+    const createdVideos = await Video.create(videosData);
+    console.log(`[Seed] Successfully seeded 3 demo users and ${createdVideos.length} ready videos!`);
+
+    console.log('[Seed] Seeding demo subscriptions...');
+    await Subscription.create([
+      { subscriber: maya._id, channel: alex._id },
+      { subscriber: maya._id, channel: sam._id },
+      { subscriber: alex._id, channel: maya._id },
+      { subscriber: sam._id, channel: maya._id },
+      { subscriber: sam._id, channel: alex._id },
+    ]);
+
+    console.log('[Seed] Seeding demo comments and timestamp links...');
+    // Alex comments on Maya's first video (Binary Search Trees)
+    const c1 = await Comment.create({
+      video: createdVideos[0]._id,
+      author: alex._id,
+      body: 'Check out 2:15 for the AVL vs Red-Black rotation comparison! Super clear explanation.',
+    });
+
+    // Maya replies to Alex's comment
+    await Comment.create({
+      video: createdVideos[0]._id,
+      author: maya._id,
+      parent: c1._id,
+      body: 'Thanks Alex! 2:15 is definitely where most people get tripped up on tree rotations.',
+    });
+
+    // Sam comments on Maya's first video
+    await Comment.create({
+      video: createdVideos[0]._id,
+      author: sam._id,
+      body: 'At 1:30 the recursion tree visualization made it click for me. Excellent job!',
+    });
+
+    // Maya comments on Alex's Tailwind CSS video (createdVideos[15])
+    await Comment.create({
+      video: createdVideos[15]._id,
+      author: maya._id,
+      body: 'The tip at 0:45 on container queries with Tailwind is gold. Using this in my new project.',
+    });
+
+    // Update video comment counts
+    await Video.updateOne({ _id: createdVideos[0]._id }, { $set: { commentCount: 3 } });
+    await Video.updateOne({ _id: createdVideos[15]._id }, { $set: { commentCount: 1 } });
+
+    console.log('[Seed] Seeding demo reactions and watch progress...');
+    await Reaction.create([
+      { user: alex._id, video: createdVideos[0]._id, value: 1 },
+      { user: sam._id, video: createdVideos[0]._id, value: 1 },
+      { user: maya._id, video: createdVideos[15]._id, value: 1 },
+    ]);
+
+    await WatchProgress.create([
+      {
+        user: maya._id,
+        video: createdVideos[15]._id,
+        positionSec: 180,
+        durationSec: createdVideos[15].durationSec,
+      },
+      {
+        user: alex._id,
+        video: createdVideos[0]._id,
+        positionSec: 135,
+        durationSec: createdVideos[0].durationSec,
+      },
+    ]);
+
+    console.log('[Seed] All demo data successfully seeded!');
   } catch (err) {
     console.error('[Seed] Error during seeding:', err);
     throw err;
