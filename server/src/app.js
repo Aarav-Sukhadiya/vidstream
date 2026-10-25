@@ -10,6 +10,7 @@ const authRoutes = require('./routes/auth');
 const meRoutes = require('./routes/me');
 const videoRoutes = require('./routes/video');
 const webhookRoutes = require('./routes/webhook');
+const commentRoutes = require('./routes/comment');
 const { errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
@@ -56,6 +57,10 @@ app.use('/me', meRoutes);
 // Video management and upload routes
 app.use('/api/videos', videoRoutes);
 app.use('/videos', videoRoutes);
+
+// Comment routes
+app.use('/api/comments', commentRoutes);
+app.use('/comments', commentRoutes);
 
 // Webhook routes (Cloudinary notifications)
 app.use('/webhooks', webhookRoutes);
