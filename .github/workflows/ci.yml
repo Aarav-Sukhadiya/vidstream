@@ -8,8 +8,13 @@ on:
 
 jobs:
   server:
-    name: Server Checks
+    name: Server Checks & Tests
     runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,6 +31,12 @@ jobs:
 
       - name: Lint server
         run: npm run lint --prefix server
+
+      - name: Run server tests
+        run: npm test --prefix server
+        env:
+          NODE_ENV: test
+          MONGODB_URI: mongodb://localhost:27017/vidstream_test
 
   client:
     name: Client Checks
