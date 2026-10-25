@@ -23,6 +23,41 @@ const app = express();
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
+        imgSrc: [
+          "'self'",
+          'data:',
+          'blob:',
+          'https:',
+          'https://images.unsplash.com',
+          'https://res.cloudinary.com',
+        ],
+        mediaSrc: [
+          "'self'",
+          'data:',
+          'blob:',
+          'https:',
+          'https://test-streams.mux.dev',
+          'https://res.cloudinary.com',
+        ],
+        connectSrc: [
+          "'self'",
+          'https:',
+          'wss:',
+          'ws:',
+          'https://test-streams.mux.dev',
+          'https://res.cloudinary.com',
+          'https://api.cloudinary.com',
+        ],
+        fontSrc: ["'self'", 'https:', 'data:'],
+        objectSrc: ["'none'"],
+        upgradeInsecureRequests: [],
+      },
+    },
   })
 );
 
