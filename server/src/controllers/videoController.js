@@ -406,7 +406,103 @@ async function saveProgress(req, res, next) {
   }
 }
 
+/**
+ * List public ready videos with cursor pagination (Home Feed & Search)
+ */
+async function getVideos(req, res, next) {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 12, 1), 50);
+    const { cursor, tag, q, sort = 'newest' } = req.query;
+
+    const query = {
+      status: 'ready',
+      visibility: 'public',
+    };
+
+    if (tag) {
+      query.tags = tag.toLowerCase().trim();
+    }
+
+    if (q && q.trim()) {
+      query.$text = { $search: q.trim() };
+    }
+
+    // Apply cursor pagination
+    if (cursor) {
+      try {
+        const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+        if (sort === 'views' && decoded.viewCount !== undefined) {
+          query.$or = [
+            { viewCount: { $lt: decoded.viewCount } },
+            { viewCount: decoded.viewCount, _id: { $lt: decoded.id } },
+          ];
+        } else if (decoded.publishedAt) {
+          const cursorDate = new Date(decoded.publishedAt);
+          query.$or = [
+            { publishedAt: { $lt: cursorDate } },
+            { publishedAt: cursorDate, _id: { $lt: decoded.id } },
+          ];
+        }
+      } catch {
+        // Invalid cursor ignored
+      }
+    }
+
+    let sortOption = { publishedAt: -1, _id: -1 };
+    if (sort === 'views') {
+      sortOption = { viewCount: -1, _id: -1 };
+    } else if (q && sort === 'relevance') {
+      sortOption = { score: { $meta: 'textScore' }, _id: -1 };
+    }
+
+    const videos = await Video.find(query)
+      .sort(sortOption)
+      .limit(limit + 1)
+      .populate('owner', 'handle displayName avatarUrl')
+      .lean();
+
+    const hasMore = videos.length > limit;
+    const items = hasMore ? videos.slice(0, limit) : videos;
+
+    let nextCursor = null;
+    if (hasMore && items.length > 0) {
+      const lastItem = items[items.length - 1];
+      const cursorPayload = {
+        id: lastItem._id.toString(),
+        publishedAt: lastItem.publishedAt || lastItem.createdAt,
+        viewCount: lastItem.viewCount || 0,
+      };
+      nextCursor = Buffer.from(JSON.stringify(cursorPayload)).toString('base64url');
+    }
+
+    const formattedItems = items.map((v) => ({
+      id: v._id.toString(),
+      title: v.title,
+      description: v.description,
+      tags: v.tags,
+      thumbnailUrl: v.thumbnailUrl,
+      durationSec: v.durationSec,
+      viewCount: v.viewCount,
+      publishedAt: v.publishedAt || v.createdAt,
+      channel: {
+        id: v.owner ? v.owner._id.toString() : '',
+        handle: v.owner?.handle || 'creator',
+        displayName: v.owner?.displayName || 'Creator',
+        avatarUrl: v.owner?.avatarUrl || '',
+      },
+    }));
+
+    res.status(200).json({
+      items: formattedItems,
+      nextCursor,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
+  getVideos,
   createVideo,
   confirmVideoUpload,
   getMyVideos,
