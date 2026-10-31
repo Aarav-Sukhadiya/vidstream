@@ -2,6 +2,17 @@
 
 > A high-performance, full-stack video streaming and community platform built with the MERN stack. Creators upload videos directly to cloud storage, background workers transcode media to multi-bitrate HLS, and viewers discover, watch with adaptive bitrate, react atomically, and engage through timestamp-linked discussions.
 
+## 🚀 Live Demo
+
+**App:** https://vidstream-two.vercel.app
+
+| | |
+| --- | --- |
+| **Demo login** | `maya@vidstream.com` |
+| **Password** | `Password123!` *(same for all 8 demo accounts, see [Demo Credentials](#10-demo-credentials))* |
+
+> The API runs on Render's free tier, so the **first request after a period of inactivity can take 30–50 seconds** while the server wakes up. Refresh once if the feed is empty at first.
+
 ---
 
 ## 1. Problem Statement
@@ -114,7 +125,8 @@ docker run -d --name vidstream-mongo -p 27017:27017 mongo:7
 npm install --prefix server
 npm install --prefix client
 
-# 5. Seed database with demo users, 16 ready videos, comments, and subscriptions
+# 5. Seed database with 8 demo creators, 62 ready videos, comments, likes and subscriptions
+#    (remote databases such as Atlas need explicit confirmation: npm run seed --prefix server -- --yes)
 npm run seed --prefix server
 
 # 6. Start development servers
@@ -147,15 +159,24 @@ Visit `http://localhost:5173` to explore VidStream.
 
 ## 10. Demo Credentials
 
-The database seed command (`npm run seed --prefix server`) provisions three pre-configured accounts:
+**Password for every demo account: `Password123!`**
 
-| Email | Password | Handle | Role | Bio |
-| --- | --- | --- | --- | --- |
-| `maya@vidstream.com` | `Password123!` | `maya` | Creator | Full-stack engineer building distributed systems and teaching DSA. |
-| `alex@vidstream.com` | `Password123!` | `alex_dev` | Creator | Frontend architecture, modern CSS layouts, and UI performance. |
-| `sam@vidstream.com` | `Password123!` | `sam_systems` | Creator | DevOps, Kubernetes orchestration, and database scaling. |
+The live site is pre-loaded with demo data, so you can sign in straight away at https://vidstream-two.vercel.app/login.
 
-*Note: All seeded videos, subscriptions, timestamped comments, and likes are automatically linked across these accounts.*
+| Email | Password | Channel | Content |
+| --- | --- | --- | --- |
+| `maya@vidstream.com` | `Password123!` | [@maya](https://vidstream-two.vercel.app/c/maya) | Data structures, algorithms, system design |
+| `alex@vidstream.com` | `Password123!` | [@alex_dev](https://vidstream-two.vercel.app/c/alex_dev) | Frontend, React, CSS |
+| `sam@vidstream.com` | `Password123!` | [@sam_systems](https://vidstream-two.vercel.app/c/sam_systems) | DevOps, Kubernetes, databases |
+| `priya@vidstream.com` | `Password123!` | [@priya_ml](https://vidstream-two.vercel.app/c/priya_ml) | AI and machine learning |
+| `leo@vidstream.com` | `Password123!` | [@leo_gamedev](https://vidstream-two.vercel.app/c/leo_gamedev) | Game development |
+| `nina@vidstream.com` | `Password123!` | [@nina_designs](https://vidstream-two.vercel.app/c/nina_designs) | UI/UX design |
+| `omar@vidstream.com` | `Password123!` | [@omar_secure](https://vidstream-two.vercel.app/c/omar_secure) | Application security |
+| `jules@vidstream.com` | `Password123!` | [@jules_mobile](https://vidstream-two.vercel.app/c/jules_mobile) | Mobile development |
+
+**What the demo data includes:** 8 creators, 62 ready-to-stream HLS videos, about 270 comments (many with clickable timestamps and reply threads), likes, subscriptions between creators, and watch history with resume positions. Every account has its own Subscriptions, History and Liked pages already filled in.
+
+To recreate the same data locally, run `npm run seed --prefix server`. It only replaces the demo accounts' data and leaves other users untouched.
 
 ---
 
@@ -164,9 +185,9 @@ The database seed command (`npm run seed --prefix server`) provisions three pre-
 | Timestamp | Screen | Action & Narration |
 | --- | --- | --- |
 | **0:00 - 0:30** | Home Page | Introduce VidStream: "A community platform for learners and creators to share video and discuss exact moments." Highlight the responsive 1-to-4 column grid, instant thumbnail loading, duration badges, and channel avatars. |
-| **0:30 - 1:30** | Studio Upload | Log in as `maya@vidstream.com`. Navigate to Studio, initiate an upload with a short clip. Show the signed direct upload progress bar, followed by real-time Socket.IO status transitions: `queued` &rarr; `processing` &rarr; `ready`. |
-| **1:30 - 2:30** | Watch Page | Open the uploaded video or "Binary Search Trees". Demonstrate adaptive HLS streaming and the manual quality switcher (360p / 720p). Click a like (optimistic UI increment). Show comments: click timestamp `2:15` to see the player seek instantly. Reload page to demonstrate playback position resume. |
-| **2:30 - 3:15** | Discovery & Library | Search for `Quantum Computing` (title matches rank above description matches). Filter by tag `dsa`. Open Maya's channel profile and toggle Subscribe. Visit `/subscriptions` to view the unified subscribed feed. Visit `/history` to show the red progress bar and test "Clear All History". |
+| **0:30 - 1:30** | Studio Upload | Log in as `maya@vidstream.com` (password `Password123!`). Navigate to Studio, initiate an upload with a short clip. Show the signed direct upload progress bar, followed by real-time Socket.IO status transitions: `queued` &rarr; `processing` &rarr; `ready`. |
+| **1:30 - 2:30** | Watch Page | Open the uploaded video or "Binary Search Trees". Demonstrate adaptive HLS streaming and the manual quality switcher (360p / 720p). Click a like (optimistic UI increment). Show comments: click any timestamp (e.g. `10:15`) to see the player seek instantly. Reload page to demonstrate playback position resume. |
+| **2:30 - 3:15** | Discovery & Library | Search for `security` (title matches rank above description matches). Filter by tag `AI` or `GameDev`. Open Maya's channel profile and toggle Subscribe. Visit `/subscriptions` to view the unified subscribed feed. Visit `/history` to show the red progress bar and test "Clear All History". |
 | **3:15 - 3:45** | Resilience & Edge Cases | Simulate offline in DevTools: show clean error banner with "Retry" button. Post comments rapidly to trigger the 429 rate limit banner on the 11th comment. Show Studio retry for failed jobs. |
 | **3:45 - 4:00** | Architecture | Review `docs/architecture.md` diagram and 25-checkpoint conventional commit history. |
 
@@ -197,4 +218,5 @@ docker run -d --name vidstream-live -p 4000:4000 --env-file server/.env vidstrea
 
 1. **Cold Starts on Free Tier Hosts:** Free Render or container tiers may experience a 30–50 second spin-up latency on the initial request. `/api/health` acts as a keep-alive probe.
 2. **Comment Nesting Depth:** Comments support 1-level deep threading (parent and replies). Replying to an existing reply attaches to the top-level parent comment to prevent unreadable indentation cascades on mobile viewports.
-3. **Single-Worker Transcoding Throughput:** In default `WORKER_MODE=inline`, transcoding runs as an `ffmpeg` child process on the API container. In high-traffic production environments, setting `WORKER_MODE=separate` on dedicated worker nodes is recommended.
+3. **Uploaded Media on Ephemeral Disk:** Transcoded HLS output for newly uploaded videos is stored on the API container's local disk, which Render's free tier wipes on every redeploy. The seeded demo videos stream from external HLS hosts and are unaffected.
+4. **Single-Worker Transcoding Throughput:** In default `WORKER_MODE=inline`, transcoding runs as an `ffmpeg` child process on the API container. In high-traffic production environments, setting `WORKER_MODE=separate` on dedicated worker nodes is recommended.
