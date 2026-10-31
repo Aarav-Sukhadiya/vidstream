@@ -1,51 +1,37 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import PropTypes from 'prop-types';
 import AuthContext from './authContext';
-import api, { setAccessToken, setSessionExpiredHandler } from '../api/client';
+import api, { setAccessToken, setSessionExpiredHandler, refreshSession } from '../api/client';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [accessToken, setTokenState] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const applyAuth = useCallback((userData, token) => {
-    setUser(userData);
-    setTokenState(token);
     setAccessToken(token);
+    setUser(userData);
   }, []);
 
   const clearAuth = useCallback(() => {
-    setUser(null);
-    setTokenState(null);
     setAccessToken(null);
+    setUser(null);
   }, []);
 
-  // Restore session on initial load via /auth/refresh
+  // Restore the session from the refresh cookie on first load
   useEffect(() => {
-    setSessionExpiredHandler(() => {
-      clearAuth();
-    });
-
+    setSessionExpiredHandler(clearAuth);
     let isMounted = true;
 
-    async function restoreSession() {
-      try {
-        const response = await api.post('/auth/refresh');
-        if (isMounted && response.data) {
-          applyAuth(response.data.user, response.data.accessToken);
-        }
-      } catch {
-        if (isMounted) {
-          clearAuth();
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    restoreSession();
+    refreshSession()
+      .then((data) => {
+        if (isMounted) applyAuth(data.user, data.accessToken);
+      })
+      .catch(() => {
+        if (isMounted) clearAuth();
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
 
     return () => {
       isMounted = false;
@@ -54,18 +40,18 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(
     async (email, password) => {
-      const response = await api.post('/auth/login', { email, password });
-      applyAuth(response.data.user, response.data.accessToken);
-      return response.data.user;
+      const { data } = await api.post('/auth/login', { email, password });
+      applyAuth(data.user, data.accessToken);
+      return data.user;
     },
     [applyAuth]
   );
 
   const register = useCallback(
     async (formData) => {
-      const response = await api.post('/auth/register', formData);
-      applyAuth(response.data.user, response.data.accessToken);
-      return response.data.user;
+      const { data } = await api.post('/auth/register', formData);
+      applyAuth(data.user, data.accessToken);
+      return data.user;
     },
     [applyAuth]
   );
@@ -81,14 +67,13 @@ export function AuthProvider({ children }) {
   const value = useMemo(
     () => ({
       user,
-      accessToken,
       isLoading,
       isAuthenticated: !!user,
       login,
       register,
       logout,
     }),
-    [user, accessToken, isLoading, login, register, logout]
+    [user, isLoading, login, register, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

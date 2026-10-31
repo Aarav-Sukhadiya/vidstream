@@ -39,7 +39,7 @@ jobs:
         run: npm test --prefix server
         env:
           NODE_ENV: test
-          MONGODB_URI: mongodb://localhost:27017/vidstream_test
+          TEST_MONGODB_URI: mongodb://localhost:27017/vidstream_test
           JWT_ACCESS_SECRET: test_access_token_secret_for_jwt_32_characters_minimum
           JWT_REFRESH_SECRET: test_refresh_token_secret_for_jwt_32_characters_minimum
           CLOUDINARY_API_KEY: mock_key

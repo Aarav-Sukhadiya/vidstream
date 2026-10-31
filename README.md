@@ -131,7 +131,7 @@ Visit `http://localhost:5173` to explore VidStream.
 | Variable | Description | Default / Example |
 | --- | --- | --- |
 | `PORT` | API server listening port | `4000` |
-| `CLIENT_ORIGIN` | Allowed client origin for CORS | `http://localhost:5173` |
+| `CLIENT_ORIGIN` | Allowed client origin(s) for CORS, comma-separated | `http://localhost:5173` |
 | `MONGODB_URI` | MongoDB connection URI | `mongodb://localhost:27017/vidstream` |
 | `JWT_ACCESS_SECRET` | Secret key for signing access JWTs | `your_access_secret_key` |
 | `JWT_REFRESH_SECRET` | Secret key for signing refresh JWTs | `your_refresh_secret_key` |
@@ -139,7 +139,9 @@ Visit `http://localhost:5173` to explore VidStream.
 | `CLOUDINARY_API_KEY` | Cloudinary API Key | `your_api_key` |
 | `CLOUDINARY_API_SECRET` | Cloudinary API Secret | `your_api_secret` |
 | `CLOUDINARY_UPLOAD_PRESET`| Cloudinary unsigned/signed preset | `vidstream_raw` |
-| `WORKER_MODE` | Transcoding worker mode (`inline` or `separate`) | `inline` |
+| `WORKER_MODE` | `inline` (worker runs in the API process), `separate` (run `npm run worker --prefix server` as its own process) or `disabled` | `inline` |
+| `MAX_UPLOAD_MB` | Max upload size; also caps the worker's source download | `100` |
+| `TEST_MONGODB_URI` | Optional local DB for tests (CI). Tests otherwise use an in-memory MongoDB and **refuse to connect to any non-local database** | — |
 
 ---
 
@@ -153,7 +155,7 @@ The database seed command (`npm run seed --prefix server`) provisions three pre-
 | `alex@vidstream.com` | `Password123!` | `alex_dev` | Creator | Frontend architecture, modern CSS layouts, and UI performance. |
 | `sam@vidstream.com` | `Password123!` | `sam_systems` | Creator | DevOps, Kubernetes orchestration, and database scaling. |
 
-*Note: All 16 seeded videos, subscriptions, timestamped comments, and likes are automatically linked across these accounts.*
+*Note: All seeded videos, subscriptions, timestamped comments, and likes are automatically linked across these accounts.*
 
 ---
 

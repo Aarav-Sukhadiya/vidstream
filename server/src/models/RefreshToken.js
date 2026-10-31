@@ -11,7 +11,7 @@ const refreshTokenSchema = new Schema(
     tokenHash: {
       type: String,
       required: true,
-      index: true,
+      unique: true,
     },
     expiresAt: {
       type: Date,

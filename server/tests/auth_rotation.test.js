@@ -112,6 +112,12 @@ describe('Auth Rotation, Reuse Detection & /me Middleware Suite (Checkpoint 4)',
     expect(firstRefresh.status).toBe(200);
     const secondCookie = firstRefresh.headers['set-cookie'];
 
+    // Simulate the replay happening well after the concurrent-refresh grace window
+    await RefreshToken.collection.updateMany(
+      { replacedBy: { $ne: null } },
+      { $set: { updatedAt: new Date(Date.now() - 5 * 60 * 1000) } }
+    );
+
     // Malicious actor or replay attempts to reuse the already-rotated originalCookie
     const reuseAttempt = await request(app)
       .post('/api/auth/refresh')
@@ -124,6 +130,25 @@ describe('Auth Rotation, Reuse Detection & /me Middleware Suite (Checkpoint 4)',
       .set('Cookie', secondCookie);
     expect(activeSessionAfterBreach.status).toBe(401);
     expect(activeSessionAfterBreach.body.error.code).toBe('UNAUTHENTICATED');
+  });
+
+  it('Concurrent refreshes with the same cookie do not revoke the session', async () => {
+    const regRes = await request(app).post('/api/auth/register').send(testUser);
+    const originalCookie = regRes.headers['set-cookie'];
+
+    const [a, b] = await Promise.all([
+      request(app).post('/api/auth/refresh').set('Cookie', originalCookie),
+      request(app).post('/api/auth/refresh').set('Cookie', originalCookie),
+    ]);
+
+    const winner = [a, b].find((r) => r.status === 200);
+    expect(winner).toBeDefined();
+
+    // The rotated cookie handed to the winner must still work
+    const followUp = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', winner.headers['set-cookie']);
+    expect(followUp.status).toBe(200);
   });
 
   it('Logout revokes the refresh token and clears the cookie', async () => {

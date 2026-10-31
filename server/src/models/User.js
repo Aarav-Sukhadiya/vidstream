@@ -63,6 +63,7 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 // Custom serialization to omit passwordHash
 userSchema.methods.toJSON = function () {
   const obj = this.toObject();
+  obj.id = this._id.toString();
   delete obj.passwordHash;
   delete obj.__v;
   return obj;

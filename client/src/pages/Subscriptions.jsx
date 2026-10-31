@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/client';
+import { formatDuration, timeAgo } from '../utils/format';
 import {
   Users,
   Play,
@@ -47,22 +48,6 @@ export default function Subscriptions() {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
     fetchSubscriptionsFeed(nextCursor);
-  };
-
-  const formatDuration = (sec) => {
-    if (!sec) return '0:00';
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
-  };
-
-  const timeAgo = (dateStr) => {
-    if (!dateStr) return '';
-    const diff = Math.floor((new Date() - new Date(dateStr)) / 1000);
-    if (diff < 60) return 'just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
   };
 
   return (
@@ -145,6 +130,8 @@ export default function Subscriptions() {
                 <div className="relative aspect-video rounded-xl bg-slate-900 overflow-hidden border border-slate-800/80 group-hover:border-slate-700 transition">
                   {vid.thumbnailUrl ? (
                     <img
+                  loading="lazy"
+                  decoding="async"
                       src={vid.thumbnailUrl}
                       alt={vid.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition duration-300"

@@ -19,6 +19,7 @@ const videoSchema = new Schema(
     },
     failureReason: String,
     sourcePublicId: String,
+    sourceUrl: String,
     hlsUrl: String,
     thumbnailUrl: String,
     thumbnailPublicId: String,

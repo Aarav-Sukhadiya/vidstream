@@ -1,140 +1,137 @@
+const mongoose = require('mongoose');
 const Comment = require('../models/Comment');
 const Video = require('../models/Video');
 const { AppError } = require('../middleware/errorHandler');
+const { assertCanView } = require('../utils/access');
+const {
+  encodeCursor,
+  decodeCursor,
+  parseLimit,
+  queryString,
+  toChannel,
+} = require('../utils/serializers');
+
+function toCommentResponse(comment, author, replyCount = 0) {
+  const channel = toChannel(author);
+  return {
+    id: comment._id.toString(),
+    parentId: comment.parent ? comment.parent.toString() : null,
+    body: comment.body,
+    createdAt: comment.createdAt,
+    replyCount,
+    author: {
+      id: channel.id,
+      handle: author?.handle || 'user',
+      displayName: author?.displayName || 'User',
+      avatarUrl: channel.avatarUrl,
+    },
+  };
+}
+
+async function loadViewableVideo(id, user) {
+  const video = await Video.findById(id).select('owner status visibility').lean();
+  assertCanView(video, user);
+  return video;
+}
 
 /**
- * Get cursor-paginated comments for a video (or replies to a parent comment)
+ * Get cursor-paginated comments for a video.
+ * Top-level comments are newest first; replies (?parentId=) are oldest first so
+ * threads read top to bottom.
  */
 async function getComments(req, res, next) {
   try {
-    const { id } = req.params;
-    const { parentId, cursor, limit = 20 } = req.query;
-    const numLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
+    const video = await loadViewableVideo(req.params.id, req.user);
+    const limit = parseLimit(req.query.limit, 20, 50);
+    const parentId = queryString(req.query.parentId) || null;
 
-    const query = {
-      video: id,
-      parent: parentId || null,
-    };
+    if (parentId && !mongoose.isValidObjectId(parentId)) {
+      throw new AppError('Invalid parentId', 400, 'VALIDATION');
+    }
 
-    if (cursor) {
-      try {
-        const decodedDate = new Date(Buffer.from(cursor, 'base64url').toString('utf8'));
-        query.createdAt = { $lt: decodedDate };
-      } catch {
-        // ignore invalid cursor
-      }
+    const direction = parentId ? 1 : -1;
+    const query = { video: video._id, parent: parentId };
+
+    const cursor = decodeCursor(req.query.cursor);
+    if (cursor?.createdAt && cursor.id && mongoose.isValidObjectId(cursor.id)) {
+      const op = direction === 1 ? '$gt' : '$lt';
+      const at = new Date(cursor.createdAt);
+      query.$or = [{ createdAt: { [op]: at } }, { createdAt: at, _id: { [op]: cursor.id } }];
     }
 
     const comments = await Comment.find(query)
-      .sort({ createdAt: -1 })
-      .limit(numLimit + 1)
+      .sort({ createdAt: direction, _id: direction })
+      .limit(limit + 1)
       .populate('author', 'handle displayName avatarUrl')
       .lean();
 
-    const hasMore = comments.length > numLimit;
-    const items = hasMore ? comments.slice(0, numLimit) : comments;
+    const hasMore = comments.length > limit;
+    const items = hasMore ? comments.slice(0, limit) : comments;
 
     let nextCursor = null;
-    if (hasMore && items.length > 0) {
-      const lastItem = items[items.length - 1];
-      nextCursor = Buffer.from(lastItem.createdAt.toISOString()).toString('base64url');
+    if (hasMore) {
+      const last = items[items.length - 1];
+      nextCursor = encodeCursor({ createdAt: last.createdAt, id: last._id.toString() });
     }
 
-    // Attach reply count for top-level comments
-    const itemIds = items.map((c) => c._id);
-    const replyCounts = await Comment.aggregate([
-      { $match: { parent: { $in: itemIds } } },
-      { $group: { _id: '$parent', count: { $sum: 1 } } },
-    ]);
-
+    // Reply counts only make sense for top-level comments
     const replyCountMap = {};
-    replyCounts.forEach((r) => {
-      replyCountMap[r._id.toString()] = r.count;
+    if (!parentId && items.length) {
+      const replyCounts = await Comment.aggregate([
+        { $match: { parent: { $in: items.map((c) => c._id) } } },
+        { $group: { _id: '$parent', count: { $sum: 1 } } },
+      ]);
+      for (const r of replyCounts) replyCountMap[r._id.toString()] = r.count;
+    }
+
+    res.status(200).json({
+      items: items.map((c) => toCommentResponse(c, c.author, replyCountMap[c._id.toString()] || 0)),
+      nextCursor,
     });
-
-    const formatted = items.map((c) => ({
-      id: c._id.toString(),
-      body: c.body,
-      createdAt: c.createdAt,
-      replyCount: replyCountMap[c._id.toString()] || 0,
-      author: {
-        id: c.author ? c.author._id.toString() : '',
-        handle: c.author?.handle || 'user',
-        displayName: c.author?.displayName || 'User',
-        avatarUrl: c.author?.avatarUrl || '',
-      },
-    }));
-
-    res.status(200).json({ items: formatted, nextCursor });
   } catch (err) {
     next(err);
   }
 }
 
 /**
- * Add a comment or reply to a video
+ * Add a comment or reply to a video. Replies are kept one level deep: replying to
+ * a reply attaches the new comment to the same top-level thread.
  */
 async function createComment(req, res, next) {
   try {
-    const { id } = req.params;
+    const video = await loadViewableVideo(req.params.id, req.user);
     const { body, parentId } = req.body;
 
-    if (!body || !body.trim()) {
-      throw new AppError('Comment body is required', 400, 'VALIDATION');
-    }
-
-    if (body.trim().length > 1000) {
-      throw new AppError('Comment body cannot exceed 1000 characters', 400, 'VALIDATION');
-    }
-
-    const video = await Video.findById(id);
-    if (!video) {
-      throw new AppError('Video not found', 404, 'NOT_FOUND');
-    }
-
+    let parent = null;
     if (parentId) {
-      const parentComment = await Comment.findById(parentId);
-      if (!parentComment) {
+      const parentComment = await Comment.findById(parentId).select('video parent').lean();
+      if (!parentComment || parentComment.video.toString() !== video._id.toString()) {
         throw new AppError('Parent comment not found', 404, 'NOT_FOUND');
       }
+      parent = parentComment.parent || parentComment._id;
     }
 
     const comment = await Comment.create({
-      video: id,
+      video: video._id,
       author: req.user._id,
-      parent: parentId || null,
-      body: body.trim(),
+      parent,
+      body,
     });
 
-    await Video.updateOne({ _id: id }, { $inc: { commentCount: 1 } });
+    await Video.updateOne({ _id: video._id }, { $inc: { commentCount: 1 } });
 
-    res.status(201).json({
-      comment: {
-        id: comment._id.toString(),
-        body: comment.body,
-        createdAt: comment.createdAt,
-        replyCount: 0,
-        author: {
-          id: req.user._id.toString(),
-          handle: req.user.handle,
-          displayName: req.user.displayName,
-          avatarUrl: req.user.avatarUrl || '',
-        },
-      },
-    });
+    res.status(201).json({ comment: toCommentResponse(comment, req.user) });
   } catch (err) {
     next(err);
   }
 }
 
 /**
- * Delete own comment
+ * Delete own comment (and its replies)
  */
 async function deleteComment(req, res, next) {
   try {
-    const { id } = req.params;
-    const comment = await Comment.findById(id);
-
+    const comment = await Comment.findById(req.params.id);
     if (!comment) {
       throw new AppError('Comment not found', 404, 'NOT_FOUND');
     }
@@ -143,14 +140,15 @@ async function deleteComment(req, res, next) {
       throw new AppError('Forbidden: You can only delete your own comments', 403, 'FORBIDDEN');
     }
 
-    const videoId = comment.video;
-    const repliesCount = await Comment.countDocuments({ parent: comment._id });
-    const totalDeleted = 1 + repliesCount;
+    const { deletedCount } = await Comment.deleteMany({
+      $or: [{ _id: comment._id }, { parent: comment._id }],
+    });
+    await Video.updateOne(
+      { _id: comment.video },
+      [{ $set: { commentCount: { $max: [0, { $subtract: ['$commentCount', deletedCount] }] } } }]
+    );
 
-    await Comment.deleteMany({ $or: [{ _id: comment._id }, { parent: comment._id }] });
-    await Video.updateOne({ _id: videoId }, { $inc: { commentCount: -totalDeleted } });
-
-    res.status(200).json({ success: true, message: 'Comment deleted successfully' });
+    res.status(200).json({ success: true, message: 'Comment deleted successfully', deletedCount });
   } catch (err) {
     next(err);
   }

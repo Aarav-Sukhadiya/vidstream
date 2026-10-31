@@ -27,5 +27,6 @@ const reactionSchema = new Schema(
 
 // Compound unique index ensuring one reaction per user per video
 reactionSchema.index({ user: 1, video: 1 }, { unique: true });
+reactionSchema.index({ user: 1, value: 1, updatedAt: -1 });
 
 module.exports = model('Reaction', reactionSchema);

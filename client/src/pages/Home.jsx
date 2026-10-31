@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/client';
+import { formatDuration, timeAgo } from '../utils/format';
 import {
   Video as VideoIcon,
   Play,
@@ -12,7 +13,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 
-const TAG_FILTERS = ['All', 'React', 'Node', 'System Design', 'Algorithms', 'Databases', 'DevOps', 'Rust', 'AI', 'Cloud', 'Frontend'];
+const TAG_FILTERS = ['All', 'React', 'Node', 'System Design', 'Algorithms', 'AI', 'Security', 'Design', 'GameDev', 'Mobile', 'Databases', 'DevOps', 'Frontend'];
 
 export default function Home() {
   const [videos, setVideos] = useState([]);
@@ -22,23 +23,32 @@ export default function Home() {
   const [error, setError] = useState('');
   const [selectedTag, setSelectedTag] = useState('All');
 
+  const requestIdRef = useRef(0);
+
   const fetchVideos = useCallback(async (tag = 'All', cursor = null) => {
+    // Ignore responses from superseded requests (e.g. rapid tag switching)
+    const requestId = ++requestIdRef.current;
+    const isStale = () => requestId !== requestIdRef.current;
     try {
       const params = { limit: 12 };
       if (tag !== 'All') params.tag = tag;
       if (cursor) params.cursor = cursor;
 
       const res = await api.get('/videos', { params });
+      if (isStale()) return;
       const newItems = res.data.items || [];
 
       setVideos((prev) => (cursor ? [...prev, ...newItems] : newItems));
       setNextCursor(res.data.nextCursor || null);
       setError('');
     } catch (err) {
+      if (isStale()) return;
       setError(err.response?.data?.error?.message || 'Failed to load video feed');
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
+      if (!isStale()) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   }, []);
 
@@ -58,22 +68,6 @@ export default function Home() {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
     fetchVideos(selectedTag, nextCursor);
-  };
-
-  const formatDuration = (sec) => {
-    if (!sec) return '0:00';
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
-  };
-
-  const timeAgo = (dateStr) => {
-    if (!dateStr) return '';
-    const diff = Math.floor((new Date() - new Date(dateStr)) / 1000);
-    if (diff < 60) return 'just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
   };
 
   return (
@@ -159,6 +153,8 @@ export default function Home() {
               <div className="relative aspect-video rounded-xl bg-slate-900 overflow-hidden border border-slate-800/80 group-hover:border-slate-700 transition">
                 {video.thumbnailUrl ? (
                   <img
+                  loading="lazy"
+                  decoding="async"
                     src={video.thumbnailUrl}
                     alt={video.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition duration-300"

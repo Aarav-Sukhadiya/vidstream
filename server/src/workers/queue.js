@@ -18,6 +18,8 @@ async function failJob(job, reason) {
       { _id: job._id },
       { $set: { status: 'queued', runAfter: new Date(Date.now() + delayMs), lastError: reason } }
     );
+    // Video waits for the retry in the queue rather than appearing stuck in "processing"
+    await Video.updateOne({ _id: job.video, status: 'processing' }, { $set: { status: 'queued' } });
     return;
   }
   await Job.updateOne({ _id: job._id }, { $set: { status: 'failed', lastError: reason } });
@@ -26,28 +28,18 @@ async function failJob(job, reason) {
 
 async function requeueStaleJobs() {
   const cutoff = new Date(Date.now() - LOCK_TIMEOUT_MS);
-  const stale = await Job.find({ status: 'running', lockedAt: { $lt: cutoff } });
+  const stale = await Job.find({ status: 'running', lockedAt: { $lt: cutoff } }).lean();
   for (const job of stale) {
     await failJob(job, 'Processing timed out');
   }
 }
 
 async function enqueueTranscodeJob(videoId) {
-  // Check if active job exists
-  let job = await Job.findOne({
-    video: videoId,
-    status: { $in: ['queued', 'running'] },
-  });
+  // Reuse an active job for this video if one exists
+  const existing = await Job.findOne({ video: videoId, status: { $in: ['queued', 'running'] } });
+  if (existing) return existing;
 
-  if (!job) {
-    job = await Job.create({
-      video: videoId,
-      status: 'queued',
-      runAfter: new Date(),
-    });
-  }
-
-  return job;
+  return Job.create({ video: videoId, status: 'queued', runAfter: new Date() });
 }
 
 module.exports = {

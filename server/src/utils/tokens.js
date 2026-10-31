@@ -4,12 +4,23 @@ const crypto = require('crypto');
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 
+const REFRESH_TOKEN_TTL_MS = REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+
+function readSecret(name, devFallback) {
+  const value = process.env[name];
+  if (value) return value;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(`${name} must be set in production`);
+  }
+  return devFallback;
+}
+
 function getAccessSecret() {
-  return process.env.JWT_ACCESS_SECRET || 'fallback_access_secret_for_tests_32chars';
+  return readSecret('JWT_ACCESS_SECRET', 'dev_only_access_secret_not_for_production');
 }
 
 function getRefreshSecret() {
-  return process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret_for_tests_32chars';
+  return readSecret('JWT_REFRESH_SECRET', 'dev_only_refresh_secret_not_for_production');
 }
 
 function generateAccessToken(user) {
@@ -32,17 +43,6 @@ function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-function getRefreshTokenCookieOptions() {
-  const isProduction = process.env.NODE_ENV === 'production';
-  return {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? 'none' : 'lax',
-    maxAge: REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
-    path: '/',
-  };
-}
-
 function getClearCookieOptions() {
   const isProduction = process.env.NODE_ENV === 'production';
   return {
@@ -53,6 +53,10 @@ function getClearCookieOptions() {
   };
 }
 
+function getRefreshTokenCookieOptions() {
+  return { ...getClearCookieOptions(), maxAge: REFRESH_TOKEN_TTL_MS };
+}
+
 module.exports = {
   generateAccessToken,
   generateRefreshToken,
@@ -60,6 +64,7 @@ module.exports = {
   getRefreshTokenCookieOptions,
   getClearCookieOptions,
   REFRESH_TOKEN_EXPIRY_DAYS,
+  REFRESH_TOKEN_TTL_MS,
   getAccessSecret,
   getRefreshSecret,
 };

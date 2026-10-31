@@ -1,7 +1,10 @@
-function validateBody(schema) {
+const mongoose = require('mongoose');
+const { AppError } = require('./errorHandler');
+
+function validate(source, schema) {
   return (req, res, next) => {
     try {
-      req.body = schema.parse(req.body);
+      req[source] = schema.parse(req[source] ?? {});
       next();
     } catch (err) {
       next(err);
@@ -9,25 +12,20 @@ function validateBody(schema) {
   };
 }
 
-function validateQuery(schema) {
-  return (req, res, next) => {
-    try {
-      req.query = schema.parse(req.query);
-      next();
-    } catch (err) {
-      next(err);
-    }
-  };
-}
+const validateBody = (schema) => validate('body', schema);
+const validateQuery = (schema) => validate('query', schema);
+const validateParams = (schema) => validate('params', schema);
 
-function validateParams(schema) {
-  return (req, res, next) => {
-    try {
-      req.params = schema.parse(req.params);
-      next();
-    } catch (err) {
-      next(err);
+/**
+ * Router.param handler rejecting malformed ObjectIds with a clean 400
+ * before any controller or database work happens.
+ */
+function validateObjectIdParam(name) {
+  return (req, res, next, value) => {
+    if (!mongoose.isValidObjectId(value) || String(value).length !== 24) {
+      return next(new AppError(`Invalid ${name}`, 400, 'VALIDATION'));
     }
+    next();
   };
 }
 
@@ -35,4 +33,5 @@ module.exports = {
   validateBody,
   validateQuery,
   validateParams,
+  validateObjectIdParam,
 };
