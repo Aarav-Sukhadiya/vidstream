@@ -7,9 +7,7 @@ let onSessionExpiredCallback = null;
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
   withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
 });
 
 export function setAccessToken(token) {
@@ -24,61 +22,61 @@ export function setSessionExpiredHandler(callback) {
   onSessionExpiredCallback = callback;
 }
 
-// Request interceptor: attach bearer token if available
-api.interceptors.request.use(
-  (config) => {
-    if (inMemoryToken) {
-      config.headers.Authorization = `Bearer ${inMemoryToken}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+/**
+ * Exchange the refresh cookie for a new access token. Concurrent callers share a
+ * single in-flight request: refresh tokens are single-use, so sending the same
+ * cookie twice would trip the server's token-reuse detection.
+ */
+export function refreshSession() {
+  if (!refreshPromise) {
+    refreshPromise = api
+      .post('/auth/refresh', null, { _skipAuthRefresh: true })
+      .then((res) => {
+        setAccessToken(res.data.accessToken);
+        return res.data;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
 
-// Response interceptor: handle 401 with automatic token refresh
+api.interceptors.request.use((config) => {
+  if (inMemoryToken) {
+    config.headers.Authorization = `Bearer ${inMemoryToken}`;
+  }
+  return config;
+});
+
+// On 401, refresh once and replay the original request
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config;
+    const original = error.config;
+    const isAuthEndpoint = /\/auth\/(login|register|refresh)$/.test(original?.url || '');
 
-    // Check if error is 401 and not already retried
     if (
-      error.response?.status === 401 &&
-      originalRequest &&
-      !originalRequest._retry &&
-      !originalRequest.url?.includes('/auth/login') &&
-      !originalRequest.url?.includes('/auth/register') &&
-      !originalRequest.url?.includes('/auth/refresh')
+      error.response?.status !== 401 ||
+      !original ||
+      original._retry ||
+      original._skipAuthRefresh ||
+      isAuthEndpoint ||
+      !inMemoryToken
     ) {
-      originalRequest._retry = true;
-
-      try {
-        if (!refreshPromise) {
-          refreshPromise = api
-            .post('/auth/refresh')
-            .then((res) => {
-              const newToken = res.data.accessToken;
-              setAccessToken(newToken);
-              return newToken;
-            })
-            .finally(() => {
-              refreshPromise = null;
-            });
-        }
-
-        const newToken = await refreshPromise;
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
-        return api(originalRequest);
-      } catch (refreshErr) {
-        setAccessToken(null);
-        if (onSessionExpiredCallback) {
-          onSessionExpiredCallback();
-        }
-        return Promise.reject(refreshErr);
-      }
+      return Promise.reject(error);
     }
 
-    return Promise.reject(error);
+    original._retry = true;
+    try {
+      const { accessToken } = await refreshSession();
+      original.headers.Authorization = `Bearer ${accessToken}`;
+      return api(original);
+    } catch (refreshErr) {
+      setAccessToken(null);
+      onSessionExpiredCallback?.();
+      return Promise.reject(refreshErr);
+    }
   }
 );
 

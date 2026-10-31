@@ -17,12 +17,13 @@ export default class ErrorBoundary extends React.Component {
   }
 
   handleRetry = () => {
-    this.setState({ hasError: false, error: null });
-    if (this.props.onRetry) {
-      this.props.onRetry();
-    } else {
+    // A failed lazy chunk (e.g. after a redeploy) can only be fixed by reloading
+    if (/dynamically imported module|Loading chunk/i.test(this.state.error?.message || '')) {
       window.location.reload();
+      return;
     }
+    this.setState({ hasError: false, error: null });
+    this.props.onRetry?.();
   };
 
   render() {

@@ -191,6 +191,12 @@ describe('Core Logic Suite: Visibility, Auth Rotation, and Search (Checkpoint 23
     });
 
     it('refresh token reuse detection: replaying the consumed refresh token revokes entire family with 401', async () => {
+      // Simulate the replay arriving after the concurrent-refresh grace window
+      await RefreshToken.collection.updateMany(
+        { replacedBy: { $ne: null } },
+        { $set: { updatedAt: new Date(Date.now() - 5 * 60 * 1000) } }
+      );
+
       // Attempting to reuse initialRefreshTokenCookie which was already rotated
       const reuseRes = await request(app)
         .post('/api/auth/refresh')

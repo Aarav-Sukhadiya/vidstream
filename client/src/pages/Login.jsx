@@ -33,8 +33,8 @@ export default function Login() {
 
     try {
       await login(formData.email, formData.password);
-      const destination = location.state?.from?.pathname || '/';
-      navigate(destination, { replace: true });
+      const from = location.state?.from;
+      navigate(from ? `${from.pathname}${from.search || ''}` : '/', { replace: true });
     } catch (err) {
       const errResponse = err.response?.data?.error;
       if (errResponse) {

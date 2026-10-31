@@ -10,9 +10,16 @@
     "lint:fix": "eslint src tests seed --fix",
     "test": "vitest run",
     "test:watch": "vitest",
-    "seed": "node seed/index.js"
+    "seed": "node seed/index.js",
+    "worker": "node src/worker.js"
   },
-  "keywords": ["video", "streaming", "mern", "hls", "transcoding"],
+  "keywords": [
+    "video",
+    "streaming",
+    "mern",
+    "hls",
+    "transcoding"
+  ],
   "author": "Aarav",
   "license": "ISC",
   "dependencies": {
@@ -39,5 +46,8 @@
     "prettier": "^3.4.2",
     "supertest": "^7.0.0",
     "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

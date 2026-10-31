@@ -13,57 +13,44 @@ const webhookRoutes = require('./routes/webhook');
 const commentRoutes = require('./routes/comment');
 const channelRoutes = require('./routes/channel');
 const feedRoutes = require('./routes/feed');
+const { getCorsOptions } = require('./config/cors');
 const { mongoSanitize } = require('./middleware/sanitize');
 const { apiRateLimiter } = require('./middleware/rateLimit');
 const { errorHandler } = require('./middleware/errorHandler');
+const { TEMP_BASE } = require('./workers/paths');
 
 const app = express();
+const publicPath = path.join(__dirname, '../public');
+const hasClientBuild = fs.existsSync(path.join(publicPath, 'index.html'));
 
-// Trust reverse proxy (e.g. Render, Vercel, AWS ALB) for accurate protocol and client IP
+// Trust the first reverse proxy (Render, Vercel) for correct protocol and client IP
 app.set('trust proxy', 1);
+app.disable('x-powered-by');
 
-// Log incoming requests in non-test mode for instant observability
+// Concise access log (skips health probes to keep logs readable)
 if (process.env.NODE_ENV !== 'test') {
   app.use((req, res, next) => {
-    console.log(`[HTTP ${req.method}] ${req.url}`);
+    if (/^\/(api\/)?(health|healthz|ping)$/.test(req.path)) return next();
+    const start = process.hrtime.bigint();
+    res.on('finish', () => {
+      const ms = Number(process.hrtime.bigint() - start) / 1e6;
+      console.log(`[HTTP] ${req.method} ${req.originalUrl} ${res.statusCode} ${ms.toFixed(1)}ms`);
+    });
     next();
   });
 }
 
-// Security and utility middlewares
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
-        imgSrc: [
-          "'self'",
-          'data:',
-          'blob:',
-          'https:',
-          'https://images.unsplash.com',
-          'https://res.cloudinary.com',
-        ],
-        mediaSrc: [
-          "'self'",
-          'data:',
-          'blob:',
-          'https:',
-          'https://test-streams.mux.dev',
-          'https://res.cloudinary.com',
-        ],
-        connectSrc: [
-          "'self'",
-          'https:',
-          'wss:',
-          'ws:',
-          'https://test-streams.mux.dev',
-          'https://res.cloudinary.com',
-          'https://api.cloudinary.com',
-        ],
+        imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+        mediaSrc: ["'self'", 'data:', 'blob:', 'https:'],
+        connectSrc: ["'self'", 'https:', 'wss:'],
         fontSrc: ["'self'", 'https:', 'data:'],
         objectSrc: ["'none'"],
         upgradeInsecureRequests: [],
@@ -72,88 +59,83 @@ app.use(
   })
 );
 
+app.use(cors(getCorsOptions()));
+
+// Health checks: registered before rate limiting and body parsing
+app.use('/api', healthRoutes);
+app.use('/', healthRoutes);
+if (!hasClientBuild) {
+  // API-only deployments: let platform probes hit the root URL too
+  app.all('/', healthRoutes.handleHealth);
+}
+
+app.use(cookieParser());
 app.use(
-  cors({
-    origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
-    credentials: true,
+  express.json({
+    limit: '100kb',
+    // Keep the exact bytes for webhook signature verification
+    verify: (req, _res, buf) => {
+      if (req.originalUrl.includes('/webhooks/')) req.rawBody = buf;
+    },
+  })
+);
+app.use(express.urlencoded({ extended: false, limit: '100kb' }));
+app.use(mongoSanitize);
+
+// Transcoded HLS output. Only the hls/ folder is public (raw sources stay private).
+// Segments never change once written; playlists may be regenerated on retry.
+app.use(
+  '/media',
+  (req, res, next) => (/^\/[a-f0-9]{24}\/hls\//.test(req.path) ? next() : res.status(404).end()),
+  express.static(TEMP_BASE, {
+    fallthrough: false,
+    setHeaders(res, filePath) {
+      res.setHeader(
+        'Cache-Control',
+        filePath.endsWith('.m3u8') ? 'public, max-age=60' : 'public, max-age=31536000, immutable'
+      );
+    },
   })
 );
 
-// Health check endpoints (both /health and /api/health) - placed before rate limiters
-app.use('/', healthRoutes);
-app.use('/api', healthRoutes);
-
-app.use(cookieParser());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(mongoSanitize);
-app.use('/api', apiRateLimiter);
-
-// Static media delivery for transcoded HLS streams and thumbnails
-app.use('/media', express.static(path.join(__dirname, '../temp')));
-
-// Serve built production frontend assets if present
-const publicPath = path.join(__dirname, '../public');
-if (fs.existsSync(publicPath)) {
-  app.use(express.static(publicPath));
-}
-
-// Authentication routes
-app.use('/api/auth', authRoutes);
-app.use('/auth', authRoutes);
-
-// Current user profile route
-app.use('/api/me', meRoutes);
-app.use('/me', meRoutes);
-
-// Video management and upload routes
-app.use('/api/videos', videoRoutes);
-app.use('/videos', videoRoutes);
-
-// Comment routes
-app.use('/api/comments', commentRoutes);
-app.use('/comments', commentRoutes);
-
-// Webhook routes (Cloudinary notifications)
+// Cloudinary notifications (kept outside /api so existing webhook URLs keep working)
 app.use('/webhooks', webhookRoutes);
-app.use('/api/webhooks', webhookRoutes);
 
-// Channel routes (subscription, channel profile)
-app.use('/api/channels', channelRoutes);
-app.use('/channels', channelRoutes);
+const api = express.Router();
+api.use(apiRateLimiter);
+api.use('/auth', authRoutes);
+api.use('/me', meRoutes);
+api.use('/videos', videoRoutes);
+api.use('/comments', commentRoutes);
+api.use('/channels', channelRoutes);
+api.use('/feed', feedRoutes);
+api.use('/webhooks', webhookRoutes);
+app.use('/api', api);
 
-// Feed routes (subscriptions feed)
-app.use('/api/feed', feedRoutes);
-app.use('/feed', feedRoutes);
-
-// SPA client fallback for non-API, non-media routes in production
-if (fs.existsSync(publicPath)) {
-  app.get('*', (req, res, next) => {
-    if (
-      req.path.startsWith('/api') ||
-      req.path.startsWith('/media') ||
-      req.path.startsWith('/webhooks') ||
-      req.path.startsWith('/channels') ||
-      req.path.startsWith('/feed') ||
-      req.path === '/health'
-    ) {
-      return next();
-    }
+// Single-container deployments: serve the built client and fall back to index.html
+if (hasClientBuild) {
+  app.use(
+    express.static(publicPath, {
+      index: false,
+      setHeaders(res, filePath) {
+        // Vite emits content-hashed filenames under /assets
+        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+      },
+    })
+  );
+  app.get(/^\/(?!api\/|api$|media\/|webhooks\/|socket\.io\/).*/, (req, res) => {
     res.sendFile(path.join(publicPath, 'index.html'));
   });
 }
 
-// Catch-all 404 for unknown routes
 app.use((req, res) => {
   res.status(404).json({
-    error: {
-      code: 'NOT_FOUND',
-      message: `Cannot ${req.method} ${req.originalUrl}`,
-    },
+    error: { code: 'NOT_FOUND', message: `Cannot ${req.method} ${req.path}` },
   });
 });
 
-// Centralized error handler
 app.use(errorHandler);
 
 module.exports = app;

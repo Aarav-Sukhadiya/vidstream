@@ -3,74 +3,67 @@ const http = require('http');
 const { Server } = require('socket.io');
 const app = require('./app');
 const { connectDB, disconnectDB } = require('./config/db');
+const { getCorsOptions } = require('./config/cors');
+const { getAccessSecret, getRefreshSecret } = require('./utils/tokens');
+const { initRealtime } = require('./realtime');
 const { startWorkerLoop, stopWorkerLoop } = require('./workers');
 
 const server = http.createServer(app);
-
-const io = new Server(server, {
-  cors: {
-    origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
-    credentials: true,
-  },
-});
-
+const io = new Server(server, { cors: getCorsOptions() });
+initRealtime(io);
 app.set('io', io);
 
-// Socket.IO connection handler
-io.on('connection', (socket) => {
-  console.log(`[Socket.IO] Client connected: ${socket.id}`);
-
-  socket.on('disconnect', () => {
-    console.log(`[Socket.IO] Client disconnected: ${socket.id}`);
-  });
-});
-
 const PORT = process.env.PORT || 10000;
+const runInlineWorker = !process.env.WORKER_MODE || process.env.WORKER_MODE === 'inline';
 
 async function startServer() {
-  // Start HTTP server immediately so Render health checks pass without waiting on external handshakes
+  // Fail fast on missing production secrets instead of on the first login
+  getAccessSecret();
+  getRefreshSecret();
+
+  // Listen immediately so platform health checks pass while the DB handshake runs
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`[VidStream Server] Listening on http://0.0.0.0:${PORT}`);
   });
 
   try {
     await connectDB();
-    if (process.env.WORKER_MODE === 'inline' || !process.env.WORKER_MODE) {
-      startWorkerLoop(io);
-    }
+    if (runInlineWorker) startWorkerLoop();
   } catch (err) {
     console.error('[VidStream Server] Startup error:', err.message);
     process.exit(1);
   }
 }
 
-// Graceful shutdown handling
-async function gracefulShutdown(signal) {
-  console.log(`\n[VidStream Server] Received ${signal}. Starting graceful shutdown...`);
+let shuttingDown = false;
+function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[VidStream Server] Received ${signal}. Shutting down...`);
+
   stopWorkerLoop();
+  io.close();
+
+  // Force exit if connections do not drain in time
+  setTimeout(() => {
+    console.error('[VidStream Server] Could not close connections in time, forcing exit');
+    process.exit(1);
+  }, 10000).unref();
+
   server.close(async () => {
-    console.log('[VidStream Server] HTTP server closed');
     try {
       await disconnectDB();
-      console.log('[VidStream Server] Shutdown complete');
       process.exit(0);
     } catch (err) {
       console.error('[VidStream Server] Error during shutdown:', err);
       process.exit(1);
     }
   });
-
-  // Force close if graceful shutdown takes too long
-  setTimeout(() => {
-    console.error('[VidStream Server] Could not close connections in time, forcefully shutting down');
-    process.exit(1);
-  }, 10000);
 }
 
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-
 if (require.main === module) {
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
   startServer();
 }
 

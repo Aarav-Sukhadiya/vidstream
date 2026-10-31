@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/client';
+import { formatDuration, timeAgo } from '../utils/format';
 import {
   History as HistoryIcon,
   Trash2,
@@ -49,22 +50,6 @@ export default function History() {
     } finally {
       setClearing(false);
     }
-  };
-
-  const formatDuration = (sec) => {
-    if (!sec) return '0:00';
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
-  };
-
-  const timeAgo = (dateStr) => {
-    if (!dateStr) return '';
-    const diff = Math.floor((new Date() - new Date(dateStr)) / 1000);
-    if (diff < 60) return 'just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
   };
 
   return (
@@ -163,6 +148,8 @@ export default function History() {
                 <div className="relative w-full sm:w-64 sm:min-w-64 aspect-video rounded-xl overflow-hidden bg-slate-800 flex-shrink-0">
                   {vid.thumbnailUrl ? (
                     <img
+                  loading="lazy"
+                  decoding="async"
                       src={vid.thumbnailUrl}
                       alt={vid.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition duration-300"

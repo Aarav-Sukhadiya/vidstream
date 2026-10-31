@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import api from '../api/client';
+import { formatDuration, timeAgo } from '../utils/format';
 import { useAuth } from '../hooks/useAuth';
 import {
   Users,
@@ -78,22 +79,6 @@ export default function Channel() {
     }
   };
 
-  const formatDuration = (sec) => {
-    if (!sec) return '0:00';
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
-  };
-
-  const timeAgo = (dateStr) => {
-    if (!dateStr) return '';
-    const diff = Math.floor((new Date() - new Date(dateStr)) / 1000);
-    if (diff < 60) return 'just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
-  };
-
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh]">
@@ -143,6 +128,8 @@ export default function Channel() {
           <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-red-600/20 text-red-400 border-2 border-red-500/40 flex items-center justify-center text-3xl font-bold flex-shrink-0 shadow-lg shadow-red-600/10">
             {channel.avatarUrl ? (
               <img
+                  loading="lazy"
+                  decoding="async"
                 src={channel.avatarUrl}
                 alt={channel.displayName}
                 className="w-full h-full rounded-full object-cover"
@@ -230,6 +217,8 @@ export default function Channel() {
                 <div className="relative aspect-video rounded-xl bg-slate-900 overflow-hidden border border-slate-800/80 group-hover:border-slate-700 transition">
                   {vid.thumbnailUrl ? (
                     <img
+                  loading="lazy"
+                  decoding="async"
                       src={vid.thumbnailUrl}
                       alt={vid.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition duration-300"

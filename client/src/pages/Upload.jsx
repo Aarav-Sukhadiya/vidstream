@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import api from '../api/client';
+import { connectSocket } from '../api/socket';
+import { formatDuration } from '../utils/format';
 import {
   Upload as UploadIcon,
   Video,
@@ -10,21 +12,18 @@ import {
   FileVideo,
   X,
 } from 'lucide-react';
-import { io } from 'socket.io-client';
 
 const MAX_UPLOAD_MB = 100;
 const ALLOWED_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
+const ACTIVE_STATUSES = ['queued', 'processing'];
+const STATUS_POLL_MS = 5000;
+const EMPTY_FORM = { title: '', description: '', tags: '', visibility: 'public' };
 
 export default function Upload() {
-  const navigate = useNavigate();
   const fileInputRef = useRef(null);
+  const xhrRef = useRef(null);
 
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    tags: '',
-    visibility: 'public',
-  });
+  const [formData, setFormData] = useState(EMPTY_FORM);
   const [selectedFile, setSelectedFile] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState('');
@@ -37,34 +36,56 @@ export default function Upload() {
   const [failureReason, setFailureReason] = useState('');
   const [videoMeta, setVideoMeta] = useState(null);
 
-  // Socket.IO for real-time status updates
+  const applyStatus = (data) => {
+    setVideoStatus(data.status);
+    if (data.failureReason) setFailureReason(data.failureReason);
+    if (data.thumbnailUrl || data.hlsUrl) {
+      setVideoMeta({
+        thumbnailUrl: data.thumbnailUrl,
+        hlsUrl: data.hlsUrl,
+        durationSec: data.durationSec,
+      });
+    }
+  };
+
+  // Real-time status updates for the video being uploaded
   useEffect(() => {
-    const socketUrl = import.meta.env.VITE_SOCKET_URL || '/';
-    const socket = io(socketUrl, {
-      path: '/socket.io',
-      transports: ['websocket', 'polling'],
-    });
-
+    if (!createdVideoId) return undefined;
+    const socket = connectSocket();
     socket.on('video:status', (data) => {
-      if (data.videoId === createdVideoId) {
-        setVideoStatus(data.status);
-        if (data.failureReason) {
-          setFailureReason(data.failureReason);
-        }
-        if (data.thumbnailUrl || data.hlsUrl) {
-          setVideoMeta({
-            thumbnailUrl: data.thumbnailUrl,
-            hlsUrl: data.hlsUrl,
-            durationSec: data.durationSec,
-          });
-        }
-      }
+      if (data.videoId === createdVideoId) applyStatus(data);
     });
-
-    return () => {
-      socket.disconnect();
-    };
+    return () => socket.disconnect();
   }, [createdVideoId]);
+
+  // Polling fallback (e.g. socket blocked by a proxy or worker running separately)
+  const isActive = ACTIVE_STATUSES.includes(videoStatus);
+  useEffect(() => {
+    if (!createdVideoId || !isActive) return undefined;
+    const interval = setInterval(() => {
+      api
+        .get(`/videos/${createdVideoId}`)
+        .then((res) => applyStatus(res.data.video))
+        .catch(() => {});
+    }, STATUS_POLL_MS);
+    return () => clearInterval(interval);
+  }, [createdVideoId, isActive]);
+
+  // Abort an in-flight storage upload when leaving the page
+  useEffect(() => () => xhrRef.current?.abort(), []);
+
+  const resetForm = () => {
+    setFormData(EMPTY_FORM);
+    setSelectedFile(null);
+    setIsUploading(false);
+    setUploadProgress(0);
+    setVideoStatus(null);
+    setCreatedVideoId(null);
+    setFailureReason('');
+    setVideoMeta(null);
+    setError('');
+    setFieldErrors({});
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -129,6 +150,7 @@ export default function Upload() {
     setIsUploading(true);
     setUploadProgress(0);
 
+    let pendingVideoId = null;
     try {
       // Step 1: Request signed upload parameters from our API
       const initRes = await api.post('/videos', {
@@ -142,20 +164,28 @@ export default function Upload() {
       });
 
       const { video, upload } = initRes.data;
+      pendingVideoId = video.id;
       setCreatedVideoId(video.id);
       setVideoStatus('awaiting_upload');
 
-      // Step 2: Perform direct upload to Cloudinary via XMLHttpRequest with progress tracking
-      await uploadToStorage(upload, selectedFile);
+      // Step 2: Direct upload to Cloudinary with progress tracking
+      const stored = await uploadToStorage(upload, selectedFile);
 
-      // Step 3: Confirm upload to enqueue transcoding job
+      // Step 3: Confirm with the asset Cloudinary actually stored, enqueueing the transcode
       const confirmRes = await api.post(`/videos/${video.id}/confirm`, {
-        public_id: upload.fields.public_id || `vidstream/raw/${video.id}`,
+        public_id: stored.public_id || `${upload.fields.folder}/${upload.fields.public_id}`,
+        ...(stored.secure_url ? { secure_url: stored.secure_url } : {}),
       });
 
+      pendingVideoId = null;
       setVideoStatus(confirmRes.data.video.status);
     } catch (err) {
-      console.error('Upload error:', err);
+      // Don't leave an empty "awaiting upload" video behind in the Studio
+      if (pendingVideoId) {
+        api.delete(`/videos/${pendingVideoId}`).catch(() => {});
+        setCreatedVideoId(null);
+        setVideoStatus(null);
+      }
       const resError = err.response?.data?.error;
       if (resError) {
         setError(resError.message || 'Upload failed');
@@ -180,13 +210,14 @@ export default function Upload() {
           setUploadProgress(progress);
           if (progress >= 100) {
             clearInterval(interval);
-            resolve();
+            resolve({});
           }
         }, 150);
         return;
       }
 
       const xhr = new XMLHttpRequest();
+      xhrRef.current = xhr;
       const formDataUpload = new FormData();
 
       Object.entries(uploadConfig.fields).forEach(([key, val]) => {
@@ -202,14 +233,22 @@ export default function Upload() {
       };
 
       xhr.onload = () => {
+        xhrRef.current = null;
+        let body = {};
+        try {
+          body = JSON.parse(xhr.responseText || '{}');
+        } catch {
+          // non-JSON response
+        }
         if (xhr.status >= 200 && xhr.status < 300) {
-          resolve();
+          resolve(body);
         } else {
-          reject(new Error(`Storage rejected upload: ${xhr.statusText}`));
+          reject(new Error(`Storage rejected upload: ${body.error?.message || xhr.statusText}`));
         }
       };
 
       xhr.onerror = () => reject(new Error('Network error during file upload'));
+      xhr.onabort = () => reject(new Error('Upload cancelled'));
       xhr.open(uploadConfig.method || 'POST', uploadConfig.url, true);
       xhr.send(formDataUpload);
     });
@@ -275,13 +314,30 @@ export default function Upload() {
               </div>
             </div>
 
-            {(videoStatus === 'ready' || videoStatus === 'failed') && (
-              <button
-                onClick={() => navigate('/')}
-                className="px-4 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg transition"
-              >
-                Go to Home
-              </button>
+            {videoStatus !== 'awaiting_upload' && (
+              <div className="flex items-center gap-2">
+                {videoStatus === 'ready' && (
+                  <Link
+                    to={`/watch/${createdVideoId}`}
+                    className="px-4 py-1.5 text-xs font-semibold bg-red-600 hover:bg-red-500 text-white rounded-lg transition"
+                  >
+                    Watch
+                  </Link>
+                )}
+                <Link
+                  to="/studio"
+                  className="px-4 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg transition"
+                >
+                  Studio
+                </Link>
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="px-4 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg transition"
+                >
+                  Upload another
+                </button>
+              </div>
             )}
           </div>
 
@@ -298,6 +354,8 @@ export default function Upload() {
             <div className="p-3 bg-slate-800/60 border border-slate-700 rounded-xl text-xs text-slate-300 flex items-center gap-4">
               {videoMeta.thumbnailUrl && (
                 <img
+                  loading="lazy"
+                  decoding="async"
                   src={videoMeta.thumbnailUrl}
                   alt="Thumbnail"
                   className="w-20 h-12 object-cover rounded border border-slate-700"
@@ -305,7 +363,7 @@ export default function Upload() {
               )}
               <div>
                 <p className="font-semibold text-white">HLS Streams &amp; Thumbnail Ready</p>
-                <p className="text-slate-400">Duration: {videoMeta.durationSec || 0}s &bull; Renditions: 360p / 720p</p>
+                <p className="text-slate-400">Duration: {formatDuration(videoMeta.durationSec)}</p>
               </div>
             </div>
           )}

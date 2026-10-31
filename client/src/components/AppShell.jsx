@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import { useAuth } from '../hooks/useAuth';
 import { Play, Search, Video, User as UserIcon, LogOut, Menu, X, Users, History as HistoryIcon, ThumbsUp } from 'lucide-react';
@@ -9,6 +9,15 @@ export default function AppShell({ children }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Keep the search box in sync with the URL and close the mobile menu on navigation
+  useEffect(() => {
+    setIsMenuOpen(false);
+    if (location.pathname === '/search') {
+      setSearchQuery(new URLSearchParams(location.search).get('q') || '');
+    }
+  }, [location.pathname, location.search]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -41,7 +50,8 @@ export default function AppShell({ children }) {
           <form onSubmit={handleSearch} className="flex-1 max-w-lg hidden sm:block">
             <div className="relative">
               <input
-                type="text"
+                type="search"
+                aria-label="Search videos"
                 placeholder="Search lectures, demos, tutorials..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -112,6 +122,7 @@ export default function AppShell({ children }) {
                   <button
                     onClick={handleLogout}
                     title="Sign Out"
+                    aria-label="Sign out"
                     className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition"
                   >
                     <LogOut className="w-4 h-4" />
@@ -138,6 +149,8 @@ export default function AppShell({ children }) {
             {/* Mobile menu toggle */}
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
+              aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={isMenuOpen}
               className="sm:hidden p-2 text-slate-400 hover:text-white"
             >
               {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}

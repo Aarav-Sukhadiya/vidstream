@@ -2,6 +2,15 @@ const User = require('../models/User');
 const Video = require('../models/Video');
 const Subscription = require('../models/Subscription');
 const { AppError } = require('../middleware/errorHandler');
+const {
+  OWNER_CARD_FIELDS,
+  toVideoCard,
+  encodeCursor,
+  decodeCursor,
+  parseLimit,
+} = require('../utils/serializers');
+
+const CHANNEL_VIDEO_LIMIT = 100;
 
 /**
  * Subscribe to a channel (idempotent, rejects self-subscribe)
@@ -10,7 +19,7 @@ async function subscribeToChannel(req, res, next) {
   try {
     const { id: channelId } = req.params;
 
-    const channel = await User.findById(channelId);
+    const channel = await User.findById(channelId).select('_id');
     if (!channel) {
       throw new AppError('Channel not found', 404, 'NOT_FOUND');
     }
@@ -19,21 +28,18 @@ async function subscribeToChannel(req, res, next) {
       throw new AppError('Cannot subscribe to your own channel', 400, 'VALIDATION');
     }
 
-    const existing = await Subscription.findOne({
-      subscriber: req.user._id,
-      channel: channel._id,
-    });
-
-    if (!existing) {
-      try {
-        await Subscription.create({
-          subscriber: req.user._id,
-          channel: channel._id,
-        });
+    try {
+      const result = await Subscription.updateOne(
+        { subscriber: req.user._id, channel: channel._id },
+        { $setOnInsert: { subscriber: req.user._id, channel: channel._id } },
+        { upsert: true }
+      );
+      if (result.upsertedCount) {
         await User.updateOne({ _id: channel._id }, { $inc: { subscriberCount: 1 } });
-      } catch (err) {
-        if (err.code !== 11000) throw err;
       }
+    } catch (err) {
+      // concurrent duplicate subscribe: already subscribed
+      if (err.code !== 11000) throw err;
     }
 
     const updated = await User.findById(channel._id).select('subscriberCount');
@@ -54,7 +60,7 @@ async function unsubscribeFromChannel(req, res, next) {
   try {
     const { id: channelId } = req.params;
 
-    const channel = await User.findById(channelId);
+    const channel = await User.findById(channelId).select('_id');
     if (!channel) {
       throw new AppError('Channel not found', 404, 'NOT_FOUND');
     }
@@ -87,7 +93,7 @@ async function unsubscribeFromChannel(req, res, next) {
  */
 async function getChannelProfile(req, res, next) {
   try {
-    const handle = req.params.handle.toLowerCase().trim();
+    const handle = String(req.params.handle).toLowerCase().trim();
 
     const channel = await User.findOne({ handle }).select(
       'handle displayName bio avatarUrl subscriberCount'
@@ -96,38 +102,19 @@ async function getChannelProfile(req, res, next) {
       throw new AppError('Channel not found', 404, 'NOT_FOUND');
     }
 
-    const videos = await Video.find({
-      owner: channel._id,
-      status: 'ready',
-      visibility: 'public',
-    })
-      .sort({ publishedAt: -1, _id: -1 })
-      .lean();
+    const publicVideos = { owner: channel._id, status: 'ready', visibility: 'public' };
+    const [videos, videoCount, isSubscribed] = await Promise.all([
+      Video.find(publicVideos)
+        .sort({ publishedAt: -1, _id: -1 })
+        .limit(CHANNEL_VIDEO_LIMIT)
+        .lean(),
+      Video.countDocuments(publicVideos),
+      req.user
+        ? Subscription.exists({ subscriber: req.user._id, channel: channel._id })
+        : Promise.resolve(null),
+    ]);
 
-    let isSubscribed = false;
-    if (req.user) {
-      isSubscribed = !!(await Subscription.exists({
-        subscriber: req.user._id,
-        channel: channel._id,
-      }));
-    }
-
-    const formattedVideos = videos.map((v) => ({
-      id: v._id.toString(),
-      title: v.title,
-      description: v.description,
-      tags: v.tags,
-      thumbnailUrl: v.thumbnailUrl,
-      durationSec: v.durationSec,
-      viewCount: v.viewCount,
-      publishedAt: v.publishedAt || v.createdAt,
-      channel: {
-        id: channel._id.toString(),
-        handle: channel.handle,
-        displayName: channel.displayName,
-        avatarUrl: channel.avatarUrl,
-      },
-    }));
+    const formattedVideos = videos.map((v) => toVideoCard(v, channel));
 
     res.status(200).json({
       channel: {
@@ -137,8 +124,8 @@ async function getChannelProfile(req, res, next) {
         bio: channel.bio || '',
         avatarUrl: channel.avatarUrl || '',
         subscriberCount: channel.subscriberCount || 0,
-        videoCount: videos.length,
-        isSubscribed,
+        videoCount,
+        isSubscribed: !!isSubscribed,
       },
       videos: formattedVideos,
     });
@@ -152,8 +139,8 @@ async function getChannelProfile(req, res, next) {
  */
 async function getSubscriptionsFeed(req, res, next) {
   try {
-    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 12, 1), 50);
-    const { cursor } = req.query;
+    const limit = parseLimit(req.query.limit, 12, 50);
+    const cursor = decodeCursor(req.query.cursor);
 
     const subscriptions = await Subscription.find({ subscriber: req.user._id })
       .select('channel')
@@ -171,61 +158,29 @@ async function getSubscriptionsFeed(req, res, next) {
       visibility: 'public',
     };
 
-    if (cursor) {
-      try {
-        const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
-        if (decoded.publishedAt) {
-          const cursorDate = new Date(decoded.publishedAt);
-          query.$or = [
-            { publishedAt: { $lt: cursorDate } },
-            { publishedAt: cursorDate, _id: { $lt: decoded.id } },
-          ];
-        }
-      } catch {
-        // ignore invalid cursor
-      }
+    if (cursor?.publishedAt && cursor.id) {
+      const cursorDate = new Date(cursor.publishedAt);
+      query.$or = [
+        { publishedAt: { $lt: cursorDate } },
+        { publishedAt: cursorDate, _id: { $lt: cursor.id } },
+      ];
     }
 
     const videos = await Video.find(query)
       .sort({ publishedAt: -1, _id: -1 })
       .limit(limit + 1)
-      .populate('owner', 'handle displayName avatarUrl')
+      .populate('owner', OWNER_CARD_FIELDS)
       .lean();
 
     const hasMore = videos.length > limit;
     const items = hasMore ? videos.slice(0, limit) : videos;
 
-    let nextCursor = null;
-    if (hasMore && items.length > 0) {
-      const lastItem = items[items.length - 1];
-      const cursorPayload = {
-        id: lastItem._id.toString(),
-        publishedAt: lastItem.publishedAt || lastItem.createdAt,
-      };
-      nextCursor = Buffer.from(JSON.stringify(cursorPayload)).toString('base64url');
-    }
+    const last = items[items.length - 1];
+    const nextCursor = hasMore
+      ? encodeCursor({ id: last._id.toString(), publishedAt: last.publishedAt || last.createdAt })
+      : null;
 
-    const formattedItems = items.map((v) => ({
-      id: v._id.toString(),
-      title: v.title,
-      description: v.description,
-      tags: v.tags,
-      thumbnailUrl: v.thumbnailUrl,
-      durationSec: v.durationSec,
-      viewCount: v.viewCount,
-      publishedAt: v.publishedAt || v.createdAt,
-      channel: {
-        id: v.owner ? v.owner._id.toString() : '',
-        handle: v.owner?.handle || 'creator',
-        displayName: v.owner?.displayName || 'Creator',
-        avatarUrl: v.owner?.avatarUrl || '',
-      },
-    }));
-
-    res.status(200).json({
-      items: formattedItems,
-      nextCursor,
-    });
+    res.status(200).json({ items: items.map((v) => toVideoCard(v)), nextCursor });
   } catch (err) {
     next(err);
   }

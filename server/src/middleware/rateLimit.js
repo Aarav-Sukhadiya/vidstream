@@ -1,81 +1,52 @@
 const rateLimit = require('express-rate-limit');
 
-/**
- * General API rate limiter
- */
-const apiRateLimiter = rateLimit({
+const isTest = () => process.env.NODE_ENV === 'test';
+const userOrIp = (req) => req.user?._id?.toString() || req.ip || 'unknown';
+
+function createLimiter({ windowMs, max, message, keyGenerator, skip = isTest }) {
+  return rateLimit({
+    windowMs,
+    max,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip,
+    ...(keyGenerator ? { keyGenerator } : {}),
+    handler: (req, res) => {
+      res.status(429).json({ error: { code: 'RATE_LIMIT_EXCEEDED', message } });
+    },
+  });
+}
+
+/** General API limiter: 300 requests / 15 min per IP */
+const apiRateLimiter = createLimiter({
   windowMs: 15 * 60 * 1000,
   max: 300,
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: () => process.env.NODE_ENV === 'test',
-  handler: (req, res) => {
-    res.status(429).json({
-      error: {
-        code: 'RATE_LIMIT_EXCEEDED',
-        message: 'Too many requests from this IP. Please try again later.',
-      },
-    });
-  },
+  message: 'Too many requests from this IP. Please try again later.',
 });
 
-/**
- * Auth rate limiter (tight on login and register)
- */
-const authRateLimiter = rateLimit({
+/** Login / register limiter: 30 attempts / 15 min per IP */
+const authRateLimiter = createLimiter({
   windowMs: 15 * 60 * 1000,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: () => process.env.NODE_ENV === 'test',
-  handler: (req, res) => {
-    res.status(429).json({
-      error: {
-        code: 'RATE_LIMIT_EXCEEDED',
-        message: 'Too many authentication attempts. Please try again in 15 minutes.',
-      },
-    });
-  },
+  max: 30,
+  message: 'Too many authentication attempts. Please try again in 15 minutes.',
 });
 
-/**
- * Comments rate limiter (10 comments per 60 seconds; 11th returns 429)
- */
-const commentRateLimiter = rateLimit({
+/** Comments: 10 per minute per user (enforced in tests too) */
+const commentRateLimiter = createLimiter({
   windowMs: 60 * 1000,
   max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => {
-    return req.user?._id?.toString() || req.ip || 'unknown';
-  },
-  handler: (req, res) => {
-    res.status(429).json({
-      error: {
-        code: 'RATE_LIMIT_EXCEEDED',
-        message: 'Rate limit exceeded: You can only post up to 10 comments per minute.',
-      },
-    });
-  },
+  keyGenerator: userOrIp,
+  skip: () => false,
+  message: 'Rate limit exceeded: You can only post up to 10 comments per minute.',
 });
 
-/**
- * Reactions rate limiter (moderate: 60 per minute)
- */
-const reactionRateLimiter = rateLimit({
+/** Reactions: 60 per minute per user */
+const reactionRateLimiter = createLimiter({
   windowMs: 60 * 1000,
   max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => req.user?._id?.toString() || req.ip || 'unknown',
-  handler: (req, res) => {
-    res.status(429).json({
-      error: {
-        code: 'RATE_LIMIT_EXCEEDED',
-        message: 'Too many reactions submitted. Please slow down.',
-      },
-    });
-  },
+  keyGenerator: userOrIp,
+  skip: () => false,
+  message: 'Too many reactions submitted. Please slow down.',
 });
 
 module.exports = {

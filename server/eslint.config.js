@@ -27,4 +27,8 @@ module.exports = [
       'no-console': 'off',
     },
   },
+  {
+    files: ['tests/globalSetup.js'],
+    languageOptions: { sourceType: 'module' },
+  },
 ];

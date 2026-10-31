@@ -12,29 +12,42 @@ const {
   updateVideo,
   deleteVideo,
 } = require('../controllers/videoController');
-const {
-  getComments,
-  createComment,
-} = require('../controllers/commentController');
+const { getComments, createComment } = require('../controllers/commentController');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
-const { validateBody } = require('../middleware/validate');
+const { validateBody, validateObjectIdParam } = require('../middleware/validate');
 const { commentRateLimiter, reactionRateLimiter } = require('../middleware/rateLimit');
-const { createVideoSchema } = require('../schemas/video');
+const {
+  createVideoSchema,
+  updateVideoSchema,
+  confirmUploadSchema,
+  progressSchema,
+  reactionSchema,
+  createCommentSchema,
+} = require('../schemas/video');
 
 const router = express.Router();
 
 router.get('/', getVideos);
 router.post('/', requireAuth, validateBody(createVideoSchema), createVideo);
-router.get('/:id/related', optionalAuth, getRelatedVideos);
+
+router.param('id', validateObjectIdParam('id'));
+
 router.get('/:id', optionalAuth, getVideoById);
-router.post('/:id/confirm', requireAuth, confirmVideoUpload);
-router.post('/:id/view', optionalAuth, recordView);
-router.put('/:id/progress', requireAuth, saveProgress);
-router.put('/:id/reaction', requireAuth, reactionRateLimiter, setReaction);
-router.get('/:id/comments', getComments);
-router.post('/:id/comments', requireAuth, commentRateLimiter, createComment);
-router.post('/:id/retry', requireAuth, retryVideo);
-router.patch('/:id', requireAuth, updateVideo);
+router.patch('/:id', requireAuth, validateBody(updateVideoSchema), updateVideo);
 router.delete('/:id', requireAuth, deleteVideo);
+router.get('/:id/related', optionalAuth, getRelatedVideos);
+router.post('/:id/confirm', requireAuth, validateBody(confirmUploadSchema), confirmVideoUpload);
+router.post('/:id/retry', requireAuth, retryVideo);
+router.post('/:id/view', optionalAuth, recordView);
+router.put('/:id/progress', requireAuth, validateBody(progressSchema), saveProgress);
+router.put('/:id/reaction', requireAuth, reactionRateLimiter, validateBody(reactionSchema), setReaction);
+router.get('/:id/comments', optionalAuth, getComments);
+router.post(
+  '/:id/comments',
+  requireAuth,
+  commentRateLimiter,
+  validateBody(createCommentSchema),
+  createComment
+);
 
 module.exports = router;

@@ -15,6 +15,7 @@ const handleHealth = (req, res) => {
   });
 };
 
-router.all(['/', '/health', '/healthz', '/ping'], handleHealth);
+router.all(['/health', '/healthz', '/ping'], handleHealth);
+router.handleHealth = handleHealth;
 
 module.exports = router;

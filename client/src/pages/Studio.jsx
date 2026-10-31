@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/client';
+import { connectSocket } from '../api/socket';
+import { formatDuration } from '../utils/format';
 import {
   Video as VideoIcon,
   Play,
@@ -17,7 +19,6 @@ import {
   X,
   Check,
 } from 'lucide-react';
-import { io } from 'socket.io-client';
 
 export default function Studio() {
   const [videos, setVideos] = useState([]);
@@ -27,7 +28,12 @@ export default function Studio() {
 
   // Editing state
   const [editingVideo, setEditingVideo] = useState(null);
-  const [editForm, setEditForm] = useState({ title: '', description: '', visibility: 'public' });
+  const [editForm, setEditForm] = useState({
+    title: '',
+    description: '',
+    tags: '',
+    visibility: 'public',
+  });
 
   // Delete confirm modal state
   const [deletingId, setDeletingId] = useState(null);
@@ -54,19 +60,16 @@ export default function Studio() {
     [videos]
   );
 
-  // Poll every 3 seconds if jobs are active
+  // Fallback polling while jobs are active (socket events usually arrive first)
   useEffect(() => {
-    if (!hasActiveJobs) return;
-    const interval = setInterval(() => {
-      fetchVideos();
-    }, 3000);
+    if (!hasActiveJobs) return undefined;
+    const interval = setInterval(fetchVideos, 10000);
     return () => clearInterval(interval);
   }, [hasActiveJobs, fetchVideos]);
 
   // Real-time Socket.IO status updates
   useEffect(() => {
-    const socketUrl = import.meta.env.VITE_SOCKET_URL || '/';
-    const socket = io(socketUrl, { path: '/socket.io', transports: ['websocket', 'polling'] });
+    const socket = connectSocket();
 
     socket.on('video:status', (data) => {
       setVideos((prev) =>
@@ -124,6 +127,7 @@ export default function Studio() {
     setEditForm({
       title: video.title,
       description: video.description || '',
+      tags: (video.tags || []).join(', '),
       visibility: video.visibility || 'public',
     });
   };
@@ -133,7 +137,14 @@ export default function Studio() {
     if (!editingVideo) return;
     setActionLoading((prev) => ({ ...prev, [editingVideo.id]: 'save' }));
     try {
-      const res = await api.patch(`/videos/${editingVideo.id}`, editForm);
+      const res = await api.patch(`/videos/${editingVideo.id}`, {
+        ...editForm,
+        tags: editForm.tags
+          .split(',')
+          .map((t) => t.trim().toLowerCase())
+          .filter(Boolean)
+          .slice(0, 10),
+      });
       setVideos((prev) =>
         prev.map((v) => (v.id === editingVideo.id ? { ...v, ...res.data.video } : v))
       );
@@ -143,13 +154,6 @@ export default function Studio() {
     } finally {
       setActionLoading((prev) => ({ ...prev, [editingVideo.id]: false }));
     }
-  };
-
-  const formatDuration = (sec) => {
-    if (!sec) return '0:00';
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
   return (
@@ -231,13 +235,15 @@ export default function Studio() {
               </thead>
               <tbody className="divide-y divide-slate-800/80">
                 {videos.map((video) => (
-                  <tr key={video.id} className="hover:bg-slate-850/50 transition">
+                  <tr key={video.id} className="hover:bg-slate-800/40 transition">
                     {/* Video Info */}
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-4">
                         <div className="w-28 h-16 rounded-xl bg-slate-800 overflow-hidden flex-shrink-0 relative border border-slate-700/60 flex items-center justify-center">
                           {video.thumbnailUrl ? (
                             <img
+                  loading="lazy"
+                  decoding="async"
                               src={video.thumbnailUrl}
                               alt={video.title}
                               className="w-full h-full object-cover"
@@ -425,6 +431,22 @@ export default function Studio() {
                     setEditForm((prev) => ({ ...prev, description: e.target.value }))
                   }
                   className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-500 resize-none"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="edit-tags"
+                  className="block text-xs font-semibold text-slate-300 uppercase mb-1"
+                >
+                  Tags (comma separated)
+                </label>
+                <input
+                  id="edit-tags"
+                  type="text"
+                  value={editForm.tags}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, tags: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-500"
                 />
               </div>
 
